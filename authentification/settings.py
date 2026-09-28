@@ -146,6 +146,8 @@ USE_TZ = True
 
 
 STATIC_URL = '/static/'
+
+STATIC_URL = '/static/'
 # Dossier pour les fichiers statiques en développement
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 # Dossier pour collectstatic
@@ -161,6 +163,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 # Configuration pour les images (optionnel)
 IMAGE_MAX_SIZE = (800, 800)  # Taille max des images
 THUMBNAIL_SIZE = (150, 150)  # Taille des miniatures
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
