@@ -25,7 +25,14 @@ SECRET_KEY = "django-insecure-mckr7p_+!iqwq4z2nd1dr9%2lb9_74=_sq8kg=bcr04km%h@@b
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+
+ALLOWED_HOSTS = [
+    "apg-backend-osc9.onrender.com",
+    "localhost",
+    "127.0.0.1",
+]
+CSRF_TRUSTED_ORIGINS = ['https://apg-backend-osc9.onrender.com']
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -59,7 +66,7 @@ MIDDLEWARE = [
 # --- CORS Configuration ---
 CORS_ALLOW_ALL_ORIGINS = True  # À restreindre en production si possible
 CORS_ALLOWED_ORIGINS = [
-    "https://sodepci-backend.onrender.com",
+    "https://apg-backend-osc9.onrender.com",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
