@@ -2,122 +2,176 @@
 from rest_framework import permissions
 
 
-class IsAdmin(permissions.BasePermission):
-    """
-    Permission pour les administrateurs uniquement
-    """
+# ============================================================
+# RÔLES DE BASE
+# ============================================================
+
+class IsPDG(permissions.BasePermission):
+    """PDG / Administrateur Général uniquement."""
 
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role == 'admin'
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin']
+        )
 
     def has_object_permission(self, request, view, obj):
-        return request.user and request.user.is_authenticated and request.user.role == 'admin'
+        return self.has_permission(request, view)
 
 
-class IsGestionnaire(permissions.BasePermission):
-    """
-    Permission pour les gestionnaires et administrateurs
-    """
+class IsRH(permissions.BasePermission):
+    """RH + PDG."""
 
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire']
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'rh']
+        )
 
     def has_object_permission(self, request, view, obj):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire']
+        return self.has_permission(request, view)
 
 
 class IsComptable(permissions.BasePermission):
-    """
-    Permission pour les comptables et administrateurs
-    """
+    """Comptable + PDG."""
 
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'comptable']
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'comptable']
+        )
 
     def has_object_permission(self, request, view, obj):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'comptable']
+        return self.has_permission(request, view)
 
 
-class IsMagasinier(permissions.BasePermission):
-    """
-    Permission pour les magasiniers, gestionnaires et administrateurs
-    """
+class IsLogistique(permissions.BasePermission):
+    """Logistique + PDG."""
 
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire', 'magasinier']
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'logistique']
+        )
 
     def has_object_permission(self, request, view, obj):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire', 'magasinier']
+        return self.has_permission(request, view)
 
 
-class IsCaissier(permissions.BasePermission):
-    """
-    Permission pour les caissiers, gestionnaires et administrateurs
-    """
+class IsSuperviseur(permissions.BasePermission):
+    """Superviseur + PDG."""
 
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire', 'caissier']
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'superviseur']
+        )
 
     def has_object_permission(self, request, view, obj):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire', 'caissier']
+        return self.has_permission(request, view)
 
 
-class IsLivreur(permissions.BasePermission):
-    """
-    Permission pour les livreurs, gestionnaires et administrateurs
-    """
+class IsEmploye(permissions.BasePermission):
+    """Tout utilisateur authentifié."""
 
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire', 'livreur']
+        return request.user and request.user.is_authenticated
 
     def has_object_permission(self, request, view, obj):
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire', 'livreur']
+        return request.user and request.user.is_authenticated
+
+
+# ============================================================
+# PERMISSIONS COMBINÉES
+# ============================================================
+
+class IsStaff(permissions.BasePermission):
+    """Tous les responsables + PDG (sauf 'employe')."""
+
+    STAFF_ROLES = ['pdg', 'admin', 'rh',
+                   'comptable', 'logistique', 'superviseur']
+
+    def has_permission(self, request, view):
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in self.STAFF_ROLES
+        )
+
+    def has_object_permission(self, request, view, obj):
+        return self.has_permission(request, view)
 
 
 class IsStaffOrReadOnly(permissions.BasePermission):
-    """
-    Lecture seule pour tous, écriture seulement pour le staff
-    """
+    """Lecture pour tous, écriture pour staff."""
+
+    STAFF_ROLES = ['pdg', 'admin', 'rh',
+                   'comptable', 'logistique', 'superviseur']
 
     def has_permission(self, request, view):
         if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user and request.user.is_authenticated and request.user.is_staff
+            return request.user and request.user.is_authenticated
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in self.STAFF_ROLES
+        )
 
     def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user and request.user.is_authenticated and request.user.is_staff
+        return self.has_permission(request, view)
 
+
+class IsPDGOrReadOnly(permissions.BasePermission):
+    """Lecture pour tous, écriture pour PDG."""
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return request.user and request.user.is_authenticated
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin']
+        )
+
+    def has_object_permission(self, request, view, obj):
+        return self.has_permission(request, view)
+
+
+# ============================================================
+# PROPRIÉTÉ
+# ============================================================
 
 class IsOwnerOrStaff(permissions.BasePermission):
-    """
-    Permission: l'utilisateur peut modifier ses propres données
-    Le staff peut tout modifier
-    """
+    """L'utilisateur peut modifier ses propres données, le staff tout."""
+
+    STAFF_ROLES = ['pdg', 'admin', 'rh',
+                   'comptable', 'logistique', 'superviseur']
 
     def has_object_permission(self, request, view, obj):
         if not request.user.is_authenticated:
             return False
-
-        # Le staff a tous les droits
-        if request.user.is_staff or request.user.role == 'admin':
+        if request.user.role in self.STAFF_ROLES:
             return True
-
-        # Vérifier si l'objet appartient à l'utilisateur
         if hasattr(obj, 'user'):
             return obj.user == request.user
         elif hasattr(obj, 'created_by'):
             return obj.created_by == request.user
-
+        elif obj == request.user:
+            return True
         return False
 
 
+# ============================================================
+# PERMISSION GRANULAIRE
+# ============================================================
+
 class HasRolePermission(permissions.BasePermission):
-    """
-    Permission basée sur les rôles et permissions spécifiques
-    Utilise la méthode has_permission du modèle CustomUser
-    """
+    """Basée sur CustomUser.has_permission()."""
 
     def __init__(self, required_permission):
         self.required_permission = required_permission
@@ -128,256 +182,286 @@ class HasRolePermission(permissions.BasePermission):
         return request.user.has_permission(self.required_permission)
 
     def has_object_permission(self, request, view, obj):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.has_permission(self.required_permission)
+        return self.has_permission(request, view)
 
 
-# Classes factory pour créer des permissions dynamiques
+# ============================================================
+# FACTORY
+# ============================================================
+
 class PermissionFactory:
-    """Factory pour créer des permissions personnalisées"""
-
     @staticmethod
     def require_permission(permission_name):
-        """Crée une permission qui requiert une permission spécifique"""
         return type(
-            f'Require{permission_name.title()}',
+            f'Require_{permission_name}',
             (permissions.BasePermission,),
             {
                 'has_permission': lambda self, request, view: (
-                    request.user and request.user.is_authenticated and
-                    request.user.has_permission(permission_name)
+                    request.user
+                    and request.user.is_authenticated
+                    and request.user.has_permission(permission_name)
                 ),
                 'has_object_permission': lambda self, request, view, obj: (
-                    request.user and request.user.is_authenticated and
-                    request.user.has_permission(permission_name)
-                )
-            }
+                    request.user
+                    and request.user.is_authenticated
+                    and request.user.has_permission(permission_name)
+                ),
+            },
         )
 
     @staticmethod
     def require_any_role(roles):
-        """Crée une permission qui accepte plusieurs rôles"""
         return type(
-            f'RequireAnyRole',
+            'RequireAnyRole',
             (permissions.BasePermission,),
             {
                 'has_permission': lambda self, request, view: (
-                    request.user and request.user.is_authenticated and
-                    request.user.role in roles
+                    request.user
+                    and request.user.is_authenticated
+                    and request.user.role in roles
                 ),
                 'has_object_permission': lambda self, request, view, obj: (
-                    request.user and request.user.is_authenticated and
-                    request.user.role in roles
-                )
-            }
+                    request.user
+                    and request.user.is_authenticated
+                    and request.user.role in roles
+                ),
+            },
         )
 
 
-# Permissions pré-définies pour les actions spécifiques
-class CanViewProducts(permissions.BasePermission):
-    """Permission pour voir les produits"""
+# ============================================================
+# PERMISSIONS MÉTIER APG
+# ============================================================
+
+# ----- RH -----
+class CanViewPersonnel(permissions.BasePermission):
+    ALLOWED = ['pdg', 'admin', 'rh', 'comptable', 'logistique', 'superviseur']
 
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'magasinier', 'caissier', 'comptable']
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in self.ALLOWED
+        )
 
 
-class CanEditProducts(permissions.BasePermission):
-    """Permission pour modifier les produits"""
+class CanEditPersonnel(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'rh']
+        )
+
+
+class CanViewPaie(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'rh', 'comptable']
+        )
+
+
+class CanPreparePaie(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'rh']
+        )
+
+
+class CanValidatePaie(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin']
+        )
+
+
+class CanValidateConges(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'rh']
+        )
+
+
+# ----- Facturation / Comptabilité -----
+class CanViewFactures(permissions.BasePermission):
+    ALLOWED = ['pdg', 'admin', 'comptable', 'rh', 'logistique', 'superviseur']
 
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'magasinier']
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in self.ALLOWED
+        )
 
 
-class CanViewStock(permissions.BasePermission):
-    """Permission pour voir les stocks"""
-
+class CanEditFactures(permissions.BasePermission):
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'magasinier', 'caissier']
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'comptable']
+        )
 
 
-class CanManageStock(permissions.BasePermission):
-    """Permission pour gérer les stocks (entrées/sorties)"""
-
+class CanValidateFactures(permissions.BasePermission):
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'magasinier']
-
-
-class CanViewSales(permissions.BasePermission):
-    """Permission pour voir les ventes"""
-
-    def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'caissier', 'comptable']
-
-
-class CanCreateSales(permissions.BasePermission):
-    """Permission pour créer des ventes"""
-
-    def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'caissier']
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'comptable']
+        )
 
 
 class CanViewFinances(permissions.BasePermission):
-    """Permission pour voir les finances"""
-
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'comptable']
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'comptable']
+        )
 
 
 class CanManageFinances(permissions.BasePermission):
-    """Permission pour gérer les finances"""
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'comptable']
+        )
+
+
+# ----- Logistique -----
+class CanViewStocks(permissions.BasePermission):
+    ALLOWED = ['pdg', 'admin', 'logistique', 'comptable', 'rh', 'superviseur']
 
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'comptable']
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in self.ALLOWED
+        )
 
 
+class CanManageStocks(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'logistique']
+        )
+
+
+class CanManageTricycles(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'logistique']
+        )
+
+
+class CanManageVehicules(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'logistique']
+        )
+
+
+class CanManageCarburant(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'logistique']
+        )
+
+
+class CanManageMaintenance(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'logistique']
+        )
+
+
+# ----- Exploitation -----
+class CanManageMissions(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'superviseur']
+        )
+
+
+class CanManageEquipes(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'superviseur']
+        )
+
+
+# ----- Workflow -----
+class CanCreateDemandeDecaissement(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'logistique', 'superviseur']
+        )
+
+
+class CanValidateDemandeDecaissement(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin']
+        )
+
+
+class CanEffectuerPaiement(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin', 'comptable']
+        )
+
+
+# ----- Administration -----
 class CanViewUsers(permissions.BasePermission):
-    """Permission pour voir les utilisateurs"""
-
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role == 'admin'
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin']
+        )
 
 
 class CanManageUsers(permissions.BasePermission):
-    """Permission pour gérer les utilisateurs"""
-
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role == 'admin'
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin']
+        )
+
+
+class CanViewAuditLog(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in ['pdg', 'admin']
+        )
 
 
 class CanViewReports(permissions.BasePermission):
-    """Permission pour voir les rapports"""
+    ALLOWED = ['pdg', 'admin', 'rh', 'comptable', 'logistique', 'superviseur']
 
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'comptable']
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role in self.ALLOWED
+        )
 
 
-class CanManageDeliveries(permissions.BasePermission):
-    """Permission pour gérer les livraisons"""
+# ============================================================
+# ALIAS DE COMPATIBILITÉ (anciens noms → nouveaux)
+# ============================================================
 
-    def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.role in ['admin', 'gestionnaire', 'livreur']
-
-
-# Combinaison de permissions
-class IsAdminOrReadOnly(permissions.BasePermission):
-    """
-    Lecture seule pour tous, écriture seulement pour les admins
-    """
-
-    def has_permission(self, request, view):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user and request.user.is_authenticated and request.user.role == 'admin'
-
-    def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user and request.user.is_authenticated and request.user.role == 'admin'
-
-
-class IsGestionnaireOrReadOnly(permissions.BasePermission):
-    """
-    Lecture seule pour tous, écriture seulement pour les gestionnaires et admins
-    """
-
-    def has_permission(self, request, view):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire']
-
-    def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'gestionnaire']
-
-
-# Permission pour l'API de gestion des lots (FIFO)
-class CanManageLots(permissions.BasePermission):
-    """
-    Permission pour gérer les lots (création, modification, consommation)
-    """
-
-    def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-
-        # Actions en lecture seule
-        if request.method in permissions.SAFE_METHODS:
-            return request.user.role in ['admin', 'gestionnaire', 'magasinier', 'caissier']
-
-        # Actions d'écriture
-        return request.user.role in ['admin', 'gestionnaire', 'magasinier']
-
-    def has_object_permission(self, request, view, obj):
-        if not request.user.is_authenticated:
-            return False
-
-        if request.method in permissions.SAFE_METHODS:
-            return request.user.role in ['admin', 'gestionnaire', 'magasinier', 'caissier']
-
-        return request.user.role in ['admin', 'gestionnaire', 'magasinier']
-
-
-# Permission pour les alertes d'expiration
-class CanManageExpiryAlerts(permissions.BasePermission):
-    """
-    Permission pour gérer les alertes d'expiration
-    """
-
-    def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-
-        # Tout le monde peut voir les alertes
-        if request.method in permissions.SAFE_METHODS:
-            return request.user.role in ['admin', 'gestionnaire', 'magasinier']
-
-        # Seuls les gestionnaires et admins peuvent traiter les alertes
-        return request.user.role in ['admin', 'gestionnaire']
-
-    def has_object_permission(self, request, view, obj):
-        return self.has_permission(request, view)
-
-
-# Permission pour les inventaires
-class CanManageInventory(permissions.BasePermission):
-    """
-    Permission pour gérer les inventaires
-    """
-
-    def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-
-        if request.method in permissions.SAFE_METHODS:
-            return request.user.role in ['admin', 'gestionnaire', 'magasinier']
-
-        return request.user.role in ['admin', 'gestionnaire']
-
-    def has_object_permission(self, request, view, obj):
-        return self.has_permission(request, view)
+IsAdmin = IsPDG
+IsGestionnaire = IsStaff
+IsMagasinier = IsLogistique
+IsCaissier = IsComptable
+IsLivreur = IsSuperviseur
+IsAdminOrReadOnly = IsPDGOrReadOnly
