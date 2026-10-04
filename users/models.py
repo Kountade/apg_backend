@@ -1,3 +1,4 @@
+# users/models.py
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
@@ -7,8 +8,12 @@ from django.template.loader import render_to_string
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 
+# ❌ Plus d'import de BaseModel — CustomUser n'en hérite plus
+
 
 class CustomUserManager(BaseUserManager):
+    """Gestionnaire d'utilisateurs basé sur l'email."""
+
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError('Email is a required field')
@@ -63,6 +68,14 @@ class CustomUserManager(BaseUserManager):
 
 
 class CustomUser(AbstractUser):
+    """
+    Utilisateur personnalisé APG.
+
+    ⚠️ N'hérite PAS de BaseModel pour éviter les conflits de migration
+    sur la base existante. Les champs created_at/updated_at sont
+    redéfinis localement.
+    """
+
     ROLE_CHOICES = (
         ('admin', 'PDG / Administrateur Général'),  # Compatibilité ancienne base
         ('pdg', 'PDG / Administrateur Général'),
@@ -89,8 +102,11 @@ class CustomUser(AbstractUser):
 
     is_online = models.BooleanField(default=False)
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+
+    # ✅ Champs d'horodatage redéfinis localement (BaseModel retiré)
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name="Créé le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Modifié le")
 
     objects = CustomUserManager()
 
@@ -105,7 +121,7 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return f"{self.get_full_name() or self.email} ({self.get_role_display()})"
 
-    # ---------- Propriétés de rôle (admin ET pdg = PDG) ----------
+    # ---------- Propriétés de rôle ----------
 
     @property
     def is_pdg(self):
@@ -153,7 +169,6 @@ class CustomUser(AbstractUser):
     # ---------- Permissions granulaires ----------
 
     def get_permissions(self):
-        # 'admin' est traité comme 'pdg'
         role = 'pdg' if self.role == 'admin' else self.role
 
         permissions = {
