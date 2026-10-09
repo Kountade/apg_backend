@@ -401,3 +401,221 @@ IsMagasinier = IsLogistique
 IsCaissier = IsComptable
 IsLivreur = IsSuperviseur
 IsAdminOrReadOnly = IsPDGOrReadOnly
+# ============================================================
+# ✅ PERMISSIONS CLIENTS (ajout)
+# ============================================================
+
+
+class CanViewClients(permissions.BasePermission):
+    """Lecture des clients : PDG, Comptable, RH, Superviseur, Logistique, Trésorier."""
+    ALLOWED = ['pdg', 'admin', 'comptable', 'rh',
+               'superviseur', 'logistique', 'tresorier']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+    def has_object_permission(self, request, view, obj):
+        return self.has_permission(request, view)
+
+
+class CanEditClients(permissions.BasePermission):
+    """Écriture sur les clients : PDG et Comptable."""
+    ALLOWED = ['pdg', 'admin', 'comptable']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+    def has_object_permission(self, request, view, obj):
+        return self.has_permission(request, view)
+
+
+# ============================================================
+# ✅ PERMISSIONS COMPTABILITÉ (ajout)
+# ============================================================
+
+class CanViewComptabilite(permissions.BasePermission):
+    """Lecture comptabilité : PDG, Comptable."""
+    ALLOWED = ['pdg', 'admin', 'comptable']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanEditComptabilite(permissions.BasePermission):
+    """Écriture comptabilité : PDG, Comptable."""
+    ALLOWED = ['pdg', 'admin', 'comptable']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+# ============================================================
+# ✅ PERMISSIONS TRÉSORERIE (ajout)
+# ============================================================
+
+class CanViewTresorerie(permissions.BasePermission):
+    """Lecture trésorerie : PDG, Comptable, Trésorier."""
+    ALLOWED = ['pdg', 'admin', 'comptable', 'tresorier']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanEditTresorerie(permissions.BasePermission):
+    """Écriture trésorerie : PDG, Comptable, Trésorier."""
+    ALLOWED = ['pdg', 'admin', 'comptable', 'tresorier']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanValidatePaiements(permissions.BasePermission):
+    """Validation paiements : PDG, Comptable."""
+    ALLOWED = ['pdg', 'admin', 'comptable']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+# ============================================================
+# ✅ PERMISSIONS VÉHICULES (ajout)
+# ============================================================
+
+class CanViewVehicules(permissions.BasePermission):
+    """Lecture véhicules : PDG, Logistique, Superviseur, Comptable."""
+    ALLOWED = ['pdg', 'admin', 'logistique', 'superviseur', 'comptable']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanEditVehicules(permissions.BasePermission):
+    """Écriture véhicules : PDG, Logistique."""
+    ALLOWED = ['pdg', 'admin', 'logistique']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+# ============================================================
+# ✅ PERMISSIONS CARBURANT (ajout)
+# ============================================================
+
+class CanViewCarburant(permissions.BasePermission):
+    """Lecture carburant : PDG, Logistique, Comptable."""
+    ALLOWED = ['pdg', 'admin', 'logistique', 'comptable']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanEditCarburant(permissions.BasePermission):
+    """Écriture carburant : PDG, Logistique."""
+    ALLOWED = ['pdg', 'admin', 'logistique']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+# ============================================================
+# ✅ PERMISSIONS MAINTENANCE (ajout)
+# ============================================================
+
+class CanViewMaintenance(permissions.BasePermission):
+    """Lecture maintenance : PDG, Logistique, Superviseur, Comptable."""
+    ALLOWED = ['pdg', 'admin', 'logistique', 'superviseur', 'comptable']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanEditMaintenance(permissions.BasePermission):
+    """Écriture maintenance : PDG, Logistique."""
+    ALLOWED = ['pdg', 'admin', 'logistique']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+# ============================================================
+# ✅ PERMISSIONS EXPLOITATION (ajout)
+# ============================================================
+
+class CanViewExploitation(permissions.BasePermission):
+    """Lecture exploitation : PDG, Superviseur, RH, Logistique."""
+    ALLOWED = ['pdg', 'admin', 'superviseur', 'rh', 'logistique']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanEditExploitation(permissions.BasePermission):
+    """Écriture exploitation : PDG, Superviseur."""
+    ALLOWED = ['pdg', 'admin', 'superviseur']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+# ============================================================
+# ✅ PERMISSIONS ACHATS (ajout)
+# ============================================================
+
+class CanViewAchats(permissions.BasePermission):
+    """Lecture achats : PDG, Logistique, Comptable."""
+    ALLOWED = ['pdg', 'admin', 'logistique', 'comptable']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanEditAchats(permissions.BasePermission):
+    """Écriture achats : PDG, Logistique."""
+    ALLOWED = ['pdg', 'admin', 'logistique']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+class CanValidateAchats(permissions.BasePermission):
+    """Validation achats : PDG uniquement."""
+    ALLOWED = ['pdg', 'admin']
+
+    def has_permission(self, request, view):
+        return (request.user and request.user.is_authenticated
+                and request.user.role in self.ALLOWED)
+
+
+# ============================================================
+# ✅ PERMISSIONS DOCUMENTS (ajout)
+# ============================================================
+
+class CanViewDocuments(permissions.BasePermission):
+    """Lecture documents : tout utilisateur authentifié."""
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated
+
+
+class CanEditDocuments(permissions.BasePermission):
+    """Écriture documents : tout utilisateur authentifié."""
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated

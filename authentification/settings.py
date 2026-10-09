@@ -52,7 +52,11 @@ INSTALLED_APPS = [
     "users",
     "config",
     "core",
-    "rh"
+    "rh",
+    "clients",
+    
+
+
 ]
 
 MIDDLEWARE = [

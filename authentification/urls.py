@@ -9,6 +9,9 @@ urlpatterns = [
     path('', include('users.urls')),
     path('', include('config.urls')),
     path('', include('rh.urls')),
+    path('', include('clients.urls')),
+
+
 
 
 
