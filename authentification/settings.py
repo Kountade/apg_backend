@@ -54,7 +54,8 @@ INSTALLED_APPS = [
     "core",
     "rh",
     "clients",
-    
+    "comptabilite"
+
 
 
 ]

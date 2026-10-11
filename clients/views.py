@@ -110,6 +110,10 @@ class ClientViewset(viewsets.ModelViewSet):
 # CONTRAT CLIENT
 # ============================================================
 
+# ============================================================
+# CONTRAT CLIENT
+# ============================================================
+
 class ContratClientViewset(viewsets.ModelViewSet):
     """CRUD Contrats clients."""
     queryset = ContratClient.objects.select_related('client', 'equipe').all()
@@ -134,6 +138,12 @@ class ContratClientViewset(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def prochain_numero(self, request):
+        """Retourne le prochain numéro de contrat proposé (sans l'enregistrer)."""
+        numero = ContratClient.proposer_numero()
+        return Response({'numero': numero})
 
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
@@ -187,10 +197,14 @@ class ContratClientViewset(viewsets.ModelViewSet):
         serializer = ContratClientListSerializer(qs, many=True)
         return Response(serializer.data)
 
+# ============================================================
+# PRESTATION
+# ============================================================
 
 # ============================================================
 # PRESTATION
 # ============================================================
+
 
 class PrestationViewset(viewsets.ModelViewSet):
     """CRUD Prestations."""
@@ -206,10 +220,22 @@ class PrestationViewset(viewsets.ModelViewSet):
             return [CanEditClients()]
         return [CanViewClients()]
 
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def prochain_code(self, request):
+        """Retourne le prochain code prestation proposé (sans l'enregistrer)."""
+        code = Prestation.proposer_code()
+        return Response({'code': code})
 
 # ============================================================
 # RELANCE
 # ============================================================
+
 
 class RelanceViewset(viewsets.ModelViewSet):
     """CRUD Relances."""

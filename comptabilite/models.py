@@ -1,10 +1,7 @@
-from django.db import models
-
-# Create your models here.
 # comptabilite/models.py
 from django.db import models
 from django.conf import settings
-from core.models import BaseModel, SoftDeleteModel, NumeroAutoMixin
+from core.models import BaseModel, SoftDeleteModel
 
 
 # ============================================================
@@ -25,11 +22,9 @@ class CompteComptable(BaseModel):
         ('8', 'Classe 8 — Autres charges/produits'),
     ]
 
-    numero = models.CharField(
-        max_length=20, unique=True, verbose_name="Numéro")
+    numero = models.CharField(max_length=20, unique=True, verbose_name="Numéro")
     libelle = models.CharField(max_length=200, verbose_name="Libellé")
-    classe = models.CharField(
-        max_length=2, choices=CLASSE_CHOICES, verbose_name="Classe")
+    classe = models.CharField(max_length=2, choices=CLASSE_CHOICES, verbose_name="Classe")
     compte_parent = models.ForeignKey(
         'self', null=True, blank=True,
         on_delete=models.CASCADE,
@@ -77,8 +72,7 @@ class Journal(BaseModel):
 
     code = models.CharField(max_length=10, unique=True, verbose_name="Code")
     libelle = models.CharField(max_length=100, verbose_name="Libellé")
-    type = models.CharField(
-        max_length=5, choices=TYPE_CHOICES, verbose_name="Type")
+    type = models.CharField(max_length=5, choices=TYPE_CHOICES, verbose_name="Type")
     actif = models.BooleanField(default=True, verbose_name="Actif")
 
     class Meta:
@@ -94,10 +88,8 @@ class Journal(BaseModel):
 # FACTURATION
 # ============================================================
 
-class Facture(BaseModel, NumeroAutoMixin):
+class Facture(BaseModel):
     """Facture client."""
-
-    PREFIX = 'FACT'
 
     TYPE_CHOICES = [
         ('proforma', 'Pro-forma'),
@@ -117,9 +109,11 @@ class Facture(BaseModel, NumeroAutoMixin):
     ]
 
     numero = models.CharField(
-        max_length=50, unique=True, verbose_name="Numéro")
-    type = models.CharField(
-        max_length=20, choices=TYPE_CHOICES, default='definitive', verbose_name="Type")
+        max_length=50, unique=True, blank=True,
+        verbose_name="Numéro",
+        help_text="Généré automatiquement au format FACT-YYYY-NNNNNN"
+    )
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='definitive', verbose_name="Type")
 
     client = models.ForeignKey(
         'clients.Client',
@@ -135,29 +129,19 @@ class Facture(BaseModel, NumeroAutoMixin):
         verbose_name="Contrat lié",
     )
 
-    date_emission = models.DateField(
-        auto_now_add=True, verbose_name="Date d'émission")
+    date_emission = models.DateField(auto_now_add=True, verbose_name="Date d'émission")
     date_echeance = models.DateField(verbose_name="Date d'échéance")
-    periode_debut = models.DateField(
-        null=True, blank=True, verbose_name="Période du")
-    periode_fin = models.DateField(
-        null=True, blank=True, verbose_name="Période au")
+    periode_debut = models.DateField(null=True, blank=True, verbose_name="Période du")
+    periode_fin = models.DateField(null=True, blank=True, verbose_name="Période au")
 
-    montant_ht = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Montant HT")
-    taux_tva = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0, verbose_name="TVA (%)")
-    montant_tva = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Montant TVA")
-    montant_ttc = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Montant TTC")
-    montant_paye = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Montant payé")
-    remise = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Remise")
+    montant_ht = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Montant HT")
+    taux_tva = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="TVA (%)")
+    montant_tva = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Montant TVA")
+    montant_ttc = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Montant TTC")
+    montant_paye = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Montant payé")
+    remise = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Remise")
 
-    statut = models.CharField(
-        max_length=30, choices=STATUT_CHOICES, default='brouillon', verbose_name="Statut")
+    statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default='brouillon', verbose_name="Statut")
 
     emise_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -169,10 +153,8 @@ class Facture(BaseModel, NumeroAutoMixin):
 
     objet = models.CharField(max_length=300, blank=True, verbose_name="Objet")
     notes = models.TextField(blank=True, verbose_name="Notes")
-    conditions_paiement = models.TextField(
-        blank=True, verbose_name="Conditions")
-    document_pdf = models.FileField(
-        upload_to='factures/%Y/%m/', null=True, blank=True, verbose_name="PDF")
+    conditions_paiement = models.TextField(blank=True, verbose_name="Conditions")
+    document_pdf = models.FileField(upload_to='factures/%Y/%m/', null=True, blank=True, verbose_name="PDF")
 
     class Meta:
         verbose_name = "Facture"
@@ -187,6 +169,50 @@ class Facture(BaseModel, NumeroAutoMixin):
 
     def __str__(self):
         return f"{self.numero} — {self.client.nom_complet}"
+
+    def save(self, *args, **kwargs):
+        if not self.numero:
+            self.numero = self._generer_numero()
+        if self.montant_ht and self.taux_tva is not None:
+            self.calculer_totaux()
+        super().save(*args, **kwargs)
+
+    def _generer_numero(self):
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefixe = f"FACT-{year}-"
+        dernier = Facture.objects.filter(
+            numero__startswith=prefixe
+        ).aggregate(max_numero=Max('numero'))['max_numero']
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+        return f"{prefixe}{nouveau_numero:06d}"
+
+    @staticmethod
+    def proposer_numero():
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefixe = f"FACT-{year}-"
+        dernier = Facture.objects.filter(
+            numero__startswith=prefixe
+        ).aggregate(max_numero=Max('numero'))['max_numero']
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+        return f"{prefixe}{nouveau_numero:06d}"
 
     @property
     def solde_restant(self):
@@ -215,29 +241,17 @@ class Facture(BaseModel, NumeroAutoMixin):
         self.montant_ttc = self.montant_ht + self.montant_tva - self.remise
         return self.montant_ttc
 
-    def save(self, *args, **kwargs):
-        if not self.numero:
-            self.numero = self.generate_numero()
-        if self.montant_ht and self.taux_tva is not None:
-            self.calculer_totaux()
-        super().save(*args, **kwargs)
-
 
 class LigneFacture(BaseModel):
     """Ligne de facture."""
-    facture = models.ForeignKey(
-        Facture, on_delete=models.CASCADE, related_name='lignes', verbose_name="Facture")
+    facture = models.ForeignKey(Facture, on_delete=models.CASCADE, related_name='lignes', verbose_name="Facture")
     designation = models.CharField(max_length=300, verbose_name="Désignation")
     description = models.TextField(blank=True, verbose_name="Description")
-    quantite = models.DecimalField(
-        max_digits=10, decimal_places=2, default=1, verbose_name="Quantité")
+    quantite = models.DecimalField(max_digits=10, decimal_places=2, default=1, verbose_name="Quantité")
     unite = models.CharField(max_length=30, blank=True, verbose_name="Unité")
-    prix_unitaire = models.DecimalField(
-        max_digits=12, decimal_places=2, verbose_name="Prix unitaire")
-    remise_ligne = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0, verbose_name="Remise")
-    montant_ht = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Montant HT")
+    prix_unitaire = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Prix unitaire")
+    remise_ligne = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Remise")
+    montant_ht = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Montant HT")
     ordre = models.IntegerField(default=0, verbose_name="Ordre")
 
     class Meta:
@@ -249,8 +263,7 @@ class LigneFacture(BaseModel):
         return f"{self.designation} x {self.quantite}"
 
     def save(self, *args, **kwargs):
-        self.montant_ht = (
-            self.quantite * self.prix_unitaire) - self.remise_ligne
+        self.montant_ht = (self.quantite * self.prix_unitaire) - self.remise_ligne
         super().save(*args, **kwargs)
 
 
@@ -258,10 +271,8 @@ class LigneFacture(BaseModel):
 # DEVIS
 # ============================================================
 
-class Devis(BaseModel, NumeroAutoMixin):
+class Devis(BaseModel):
     """Devis commercial."""
-
-    PREFIX = 'DEV'
 
     STATUT_CHOICES = [
         ('brouillon', 'Brouillon'),
@@ -273,23 +284,20 @@ class Devis(BaseModel, NumeroAutoMixin):
     ]
 
     numero = models.CharField(
-        max_length=50, unique=True, verbose_name="Numéro")
-    client = models.ForeignKey(
-        'clients.Client', on_delete=models.CASCADE, related_name='devis', verbose_name="Client")
+        max_length=50, unique=True, blank=True,
+        verbose_name="Numéro",
+        help_text="Généré automatiquement au format DEV-YYYY-NNNNNN"
+    )
+    client = models.ForeignKey('clients.Client', on_delete=models.CASCADE, related_name='devis', verbose_name="Client")
     objet = models.CharField(max_length=300, verbose_name="Objet")
-    date_emission = models.DateField(
-        auto_now_add=True, verbose_name="Date d'émission")
+    date_emission = models.DateField(auto_now_add=True, verbose_name="Date d'émission")
     date_validite = models.DateField(verbose_name="Date de validité")
 
-    montant_ht = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Montant HT")
-    taux_tva = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0, verbose_name="TVA (%)")
-    montant_ttc = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Montant TTC")
+    montant_ht = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Montant HT")
+    taux_tva = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="TVA (%)")
+    montant_ttc = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Montant TTC")
 
-    statut = models.CharField(
-        max_length=20, choices=STATUT_CHOICES, default='brouillon', verbose_name="Statut")
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='brouillon', verbose_name="Statut")
     facture_generee = models.ForeignKey(
         Facture, null=True, blank=True,
         on_delete=models.SET_NULL,
@@ -308,24 +316,56 @@ class Devis(BaseModel, NumeroAutoMixin):
 
     def save(self, *args, **kwargs):
         if not self.numero:
-            self.numero = self.generate_numero()
+            self.numero = self._generer_numero()
         if self.montant_ht and self.taux_tva is not None:
-            self.montant_ttc = self.montant_ht + \
-                (self.montant_ht * self.taux_tva / 100)
+            self.montant_ttc = self.montant_ht + (self.montant_ht * self.taux_tva / 100)
         super().save(*args, **kwargs)
+
+    def _generer_numero(self):
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefixe = f"DEV-{year}-"
+        dernier = Devis.objects.filter(
+            numero__startswith=prefixe
+        ).aggregate(max_numero=Max('numero'))['max_numero']
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+        return f"{prefixe}{nouveau_numero:06d}"
+
+    @staticmethod
+    def proposer_numero():
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefixe = f"DEV-{year}-"
+        dernier = Devis.objects.filter(
+            numero__startswith=prefixe
+        ).aggregate(max_numero=Max('numero'))['max_numero']
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+        return f"{prefixe}{nouveau_numero:06d}"
 
 
 class LigneDevis(BaseModel):
     """Ligne de devis."""
-    devis = models.ForeignKey(
-        Devis, on_delete=models.CASCADE, related_name='lignes', verbose_name="Devis")
+    devis = models.ForeignKey(Devis, on_delete=models.CASCADE, related_name='lignes', verbose_name="Devis")
     designation = models.CharField(max_length=300, verbose_name="Désignation")
-    quantite = models.DecimalField(
-        max_digits=10, decimal_places=2, default=1, verbose_name="Quantité")
-    prix_unitaire = models.DecimalField(
-        max_digits=12, decimal_places=2, verbose_name="Prix unitaire")
-    montant_ht = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Montant HT")
+    quantite = models.DecimalField(max_digits=10, decimal_places=2, default=1, verbose_name="Quantité")
+    prix_unitaire = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Prix unitaire")
+    montant_ht = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Montant HT")
 
     class Meta:
         verbose_name = "Ligne de devis"
@@ -341,10 +381,8 @@ class LigneDevis(BaseModel):
 # ÉCRITURES COMPTABLES
 # ============================================================
 
-class EcritureComptable(BaseModel, NumeroAutoMixin):
+class EcritureComptable(BaseModel):
     """Écriture comptable (partie double)."""
-
-    PREFIX = 'ECR'
 
     STATUT_CHOICES = [
         ('brouillon', 'Brouillon'),
@@ -354,25 +392,21 @@ class EcritureComptable(BaseModel, NumeroAutoMixin):
     ]
 
     numero = models.CharField(
-        max_length=50, unique=True, verbose_name="Numéro")
-    journal = models.ForeignKey(
-        Journal, on_delete=models.PROTECT, related_name='ecritures', verbose_name="Journal")
+        max_length=50, unique=True, blank=True,
+        verbose_name="Numéro",
+        help_text="Généré automatiquement au format ECR-YYYY-NNNNNN"
+    )
+    journal = models.ForeignKey(Journal, on_delete=models.PROTECT, related_name='ecritures', verbose_name="Journal")
     date_ecriture = models.DateField(verbose_name="Date")
     libelle = models.CharField(max_length=300, verbose_name="Libellé")
-    reference = models.CharField(
-        max_length=100, blank=True, verbose_name="Référence")
-    statut = models.CharField(
-        max_length=20, choices=STATUT_CHOICES, default='brouillon', verbose_name="Statut")
+    reference = models.CharField(max_length=100, blank=True, verbose_name="Référence")
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='brouillon', verbose_name="Statut")
 
-    module_source = models.CharField(
-        max_length=50, blank=True, verbose_name="Module source")
-    object_id = models.CharField(
-        max_length=50, blank=True, verbose_name="ID objet source")
+    module_source = models.CharField(max_length=50, blank=True, verbose_name="Module source")
+    object_id = models.CharField(max_length=50, blank=True, verbose_name="ID objet source")
 
-    total_debit = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Total débit")
-    total_credit = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Total crédit")
+    total_debit = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Total débit")
+    total_credit = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Total crédit")
 
     validee_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -381,8 +415,7 @@ class EcritureComptable(BaseModel, NumeroAutoMixin):
         related_name='ecritures_validees',
         verbose_name="Validée par",
     )
-    date_validation = models.DateTimeField(
-        null=True, blank=True, verbose_name="Date validation")
+    date_validation = models.DateTimeField(null=True, blank=True, verbose_name="Date validation")
 
     class Meta:
         verbose_name = "Écriture comptable"
@@ -397,30 +430,42 @@ class EcritureComptable(BaseModel, NumeroAutoMixin):
     def __str__(self):
         return f"{self.numero} — {self.libelle}"
 
+    def save(self, *args, **kwargs):
+        if not self.numero:
+            self.numero = self._generer_numero()
+        super().save(*args, **kwargs)
+
+    def _generer_numero(self):
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefixe = f"ECR-{year}-"
+        dernier = EcritureComptable.objects.filter(
+            numero__startswith=prefixe
+        ).aggregate(max_numero=Max('numero'))['max_numero']
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+        return f"{prefixe}{nouveau_numero:06d}"
+
     @property
     def est_equilibree(self):
         return self.total_debit == self.total_credit
 
-    def save(self, *args, **kwargs):
-        if not self.numero:
-            self.numero = self.generate_numero()
-        super().save(*args, **kwargs)
-
 
 class LigneEcriture(BaseModel):
     """Ligne d'écriture (débit/crédit)."""
-    ecriture = models.ForeignKey(
-        EcritureComptable, on_delete=models.CASCADE, related_name='lignes', verbose_name="Écriture")
-    compte = models.ForeignKey(CompteComptable, on_delete=models.PROTECT,
-                               related_name='lignes_ecriture', verbose_name="Compte")
-    libelle = models.CharField(
-        max_length=300, blank=True, verbose_name="Libellé")
-    debit = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Débit")
-    credit = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Crédit")
-    lettrage = models.CharField(
-        max_length=20, blank=True, verbose_name="Lettrage")
+    ecriture = models.ForeignKey(EcritureComptable, on_delete=models.CASCADE, related_name='lignes', verbose_name="Écriture")
+    compte = models.ForeignKey(CompteComptable, on_delete=models.PROTECT, related_name='lignes_ecriture', verbose_name="Compte")
+    libelle = models.CharField(max_length=300, blank=True, verbose_name="Libellé")
+    debit = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Débit")
+    credit = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Crédit")
+    lettrage = models.CharField(max_length=20, blank=True, verbose_name="Lettrage")
     ordre = models.IntegerField(default=0, verbose_name="Ordre")
 
     class Meta:
@@ -438,12 +483,10 @@ class LigneEcriture(BaseModel):
 
 class Lettrage(BaseModel):
     """Lettrage de comptes."""
-    compte = models.ForeignKey(CompteComptable, on_delete=models.CASCADE,
-                               related_name='lettrages', verbose_name="Compte")
+    compte = models.ForeignKey(CompteComptable, on_delete=models.CASCADE, related_name='lettrages', verbose_name="Compte")
     code_lettrage = models.CharField(max_length=20, verbose_name="Code")
     date_lettrage = models.DateField(auto_now_add=True, verbose_name="Date")
-    montant_lettre = models.DecimalField(
-        max_digits=14, decimal_places=2, verbose_name="Montant lettré")
+    montant_lettre = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Montant lettré")
     notes = models.TextField(blank=True, verbose_name="Notes")
 
     class Meta:
@@ -456,60 +499,55 @@ class Lettrage(BaseModel):
 
 
 # ============================================================
-# RAPPROCHEMENT BANCAIRE
+# RAPPROCHEMENT BANCAIRE (⚠️ DÉSACTIVÉ TEMPORAIREMENT)
 # ============================================================
-
-class RapprochementBancaire(BaseModel):
-    """Rapprochement bancaire."""
-
-    STATUT_CHOICES = [
-        ('en_cours', 'En cours'),
-        ('equilibre', 'Équilibré'),
-        ('ecart', 'Écart détecté'),
-        ('cloture', 'Clôturé'),
-    ]
-
-    compte_bancaire = models.ForeignKey(
-        'tresorerie.CompteBancaire',
-        on_delete=models.CASCADE,
-        related_name='rapprochements',
-        verbose_name="Compte bancaire",
-    )
-    mois = models.IntegerField(verbose_name="Mois")
-    annee = models.IntegerField(verbose_name="Année")
-    solde_releve = models.DecimalField(
-        max_digits=14, decimal_places=2, verbose_name="Solde relevé")
-    solde_comptable = models.DecimalField(
-        max_digits=14, decimal_places=2, verbose_name="Solde comptable")
-    ecart = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0, verbose_name="Écart")
-    statut = models.CharField(
-        max_length=20, choices=STATUT_CHOICES, default='en_cours', verbose_name="Statut")
-    notes = models.TextField(blank=True, verbose_name="Notes")
-    releve = models.FileField(
-        upload_to='rapprochements/', null=True, blank=True, verbose_name="Relevé")
-    cloture_par = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name='rapprochements_clotures',
-        verbose_name="Clôturé par",
-    )
-    date_cloture = models.DateTimeField(
-        null=True, blank=True, verbose_name="Date clôture")
-
-    class Meta:
-        verbose_name = "Rapprochement bancaire"
-        verbose_name_plural = "Rapprochements bancaires"
-        unique_together = ['compte_bancaire', 'mois', 'annee']
-        ordering = ['-annee', '-mois']
-
-    def __str__(self):
-        return f"{self.compte_bancaire} — {self.mois}/{self.annee}"
-
-    def save(self, *args, **kwargs):
-        self.ecart = self.solde_releve - self.solde_comptable
-        super().save(*args, **kwargs)
+# Décommentez ce bloc quand l'app 'tresorerie' sera créée.
+#
+# class RapprochementBancaire(BaseModel):
+#     """Rapprochement bancaire."""
+#
+#     STATUT_CHOICES = [
+#         ('en_cours', 'En cours'),
+#         ('equilibre', 'Équilibré'),
+#         ('ecart', 'Écart détecté'),
+#         ('cloture', 'Clôturé'),
+#     ]
+#
+#     compte_bancaire = models.ForeignKey(
+#         'tresorerie.CompteBancaire',
+#         on_delete=models.CASCADE,
+#         related_name='rapprochements',
+#         verbose_name="Compte bancaire",
+#     )
+#     mois = models.IntegerField(verbose_name="Mois")
+#     annee = models.IntegerField(verbose_name="Année")
+#     solde_releve = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Solde relevé")
+#     solde_comptable = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Solde comptable")
+#     ecart = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Écart")
+#     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='en_cours', verbose_name="Statut")
+#     notes = models.TextField(blank=True, verbose_name="Notes")
+#     releve = models.FileField(upload_to='rapprochements/', null=True, blank=True, verbose_name="Relevé")
+#     cloture_par = models.ForeignKey(
+#         settings.AUTH_USER_MODEL,
+#         null=True, blank=True,
+#         on_delete=models.SET_NULL,
+#         related_name='rapprochements_clotures',
+#         verbose_name="Clôturé par",
+#     )
+#     date_cloture = models.DateTimeField(null=True, blank=True, verbose_name="Date clôture")
+#
+#     class Meta:
+#         verbose_name = "Rapprochement bancaire"
+#         verbose_name_plural = "Rapprochements bancaires"
+#         unique_together = ['compte_bancaire', 'mois', 'annee']
+#         ordering = ['-annee', '-mois']
+#
+#     def __str__(self):
+#         return f"{self.compte_bancaire} — {self.mois}/{self.annee}"
+#
+#     def save(self, *args, **kwargs):
+#         self.ecart = self.solde_releve - self.solde_comptable
+#         super().save(*args, **kwargs)
 
 
 # ============================================================
@@ -534,20 +572,14 @@ class DeclarationFiscale(BaseModel):
         ('payee', 'Payée'),
     ]
 
-    type = models.CharField(
-        max_length=20, choices=TYPE_CHOICES, verbose_name="Type")
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type")
     periode = models.CharField(max_length=50, verbose_name="Période")
-    montant = models.DecimalField(
-        max_digits=14, decimal_places=2, verbose_name="Montant (GNF)")
+    montant = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Montant (GNF)")
     date_echeance = models.DateField(verbose_name="Échéance")
-    date_depot = models.DateField(
-        null=True, blank=True, verbose_name="Date dépôt")
-    date_paiement = models.DateField(
-        null=True, blank=True, verbose_name="Date paiement")
-    statut = models.CharField(
-        max_length=20, choices=STATUT_CHOICES, default='a_preparer', verbose_name="Statut")
-    document = models.FileField(
-        upload_to='declarations/', null=True, blank=True, verbose_name="Document")
+    date_depot = models.DateField(null=True, blank=True, verbose_name="Date dépôt")
+    date_paiement = models.DateField(null=True, blank=True, verbose_name="Date paiement")
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='a_preparer', verbose_name="Statut")
+    document = models.FileField(upload_to='declarations/', null=True, blank=True, verbose_name="Document")
     notes = models.TextField(blank=True, verbose_name="Notes")
 
     class Meta:

@@ -90,8 +90,12 @@ class ClientWriteSerializer(serializers.ModelSerializer):
 # CONTRAT CLIENT
 # ============================================================
 
+# ============================================================
+# CONTRAT CLIENT
+# ============================================================
+
 class ContratClientSerializer(serializers.ModelSerializer):
-    """Lecture ContratClient."""
+    """Lecture ContratClient avec numéro auto-généré et modifiable."""
     client_nom = serializers.SerializerMethodField(read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -124,10 +128,29 @@ class ContratClientSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'numero', 'created_at', 'updated_at',
+            'id', 'created_at', 'updated_at',
             'valide_par', 'date_validation',
             'est_actif', 'est_expire', 'jours_avant_expiration', 'montant_ttc',
         ]
+        extra_kwargs = {
+            'numero': {
+                'required': False,
+                'allow_blank': True,
+            }
+        }
+
+    def validate_numero(self, value):
+        """Vérifie l'unicité du numéro (sauf en modification)."""
+        if not value:
+            return value  # Sera généré automatiquement par le modèle
+        qs = ContratClient.objects.filter(numero=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "Ce numéro de contrat est déjà utilisé."
+            )
+        return value
 
     def get_client_nom(self, obj):
         return obj.client.nom_complet if obj.client else None
@@ -143,7 +166,6 @@ class ContratClientSerializer(serializers.ModelSerializer):
                 "La date de fin doit être postérieure à la date de début."
             )
         return data
-
 
 class ContratClientListSerializer(serializers.ModelSerializer):
     """Version allégée."""
@@ -175,7 +197,13 @@ class ContratClientValidationSerializer(serializers.Serializer):
 # PRESTATION
 # ============================================================
 
+# ============================================================
+# PRESTATION
+# ============================================================
+
 class PrestationSerializer(serializers.ModelSerializer):
+    """Lecture / écriture Prestation avec code auto-généré et modifiable."""
+
     class Meta:
         model = Prestation
         fields = [
@@ -184,11 +212,30 @@ class PrestationSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'code': {
+                'required': False,
+                'allow_blank': True,
+            }
+        }
 
+    def validate_code(self, value):
+        """Vérifie l'unicité du code (sauf en modification)."""
+        if not value:
+            return value  # Sera généré automatiquement par le modèle
+        qs = Prestation.objects.filter(code=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "Ce code prestation est déjà utilisé."
+            )
+        return value
 
 # ============================================================
 # RELANCE
 # ============================================================
+
 
 class RelanceSerializer(serializers.ModelSerializer):
     client_nom = serializers.SerializerMethodField(read_only=True)

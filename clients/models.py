@@ -164,10 +164,12 @@ class Client(SoftDeleteModel):
 # CONTRAT CLIENT
 # ============================================================
 
-class ContratClient(BaseModel, NumeroAutoMixin):
-    """Contrat de prestation entre APG et un client."""
+# ============================================================
+# CONTRAT CLIENT
+# ============================================================
 
-    PREFIX = 'CTR'
+class ContratClient(BaseModel):
+    """Contrat de prestation entre APG et un client."""
 
     STATUT_CHOICES = [
         ('brouillon', 'Brouillon'),
@@ -196,8 +198,12 @@ class ContratClient(BaseModel, NumeroAutoMixin):
         ('prelevement', 'Prélèvement'),
     ]
 
+    # ✅ NUMÉRO AUTO-GÉNÉRÉ : CTR-YYYY-NNNNNN
     numero = models.CharField(
-        max_length=50, unique=True, verbose_name="Numéro")
+        max_length=50, unique=True, blank=True,
+        verbose_name="Numéro",
+        help_text="Généré automatiquement au format CTR-YYYY-NNNNNN"
+    )
     client = models.ForeignKey(
         Client, on_delete=models.CASCADE, related_name='contrats', verbose_name="Client")
 
@@ -260,6 +266,59 @@ class ContratClient(BaseModel, NumeroAutoMixin):
     def __str__(self):
         return f"{self.numero} — {self.client.nom_complet}"
 
+    def save(self, *args, **kwargs):
+        """Génère automatiquement le numéro de contrat s'il est vide."""
+        if not self.numero:
+            self.numero = self._generer_numero()
+        super().save(*args, **kwargs)
+
+    def _generer_numero(self):
+        """Génère un numéro unique CTR-YYYY-NNNNNN."""
+        from django.utils import timezone
+        from django.db.models import Max
+
+        year = timezone.now().year
+        prefixe = f"CTR-{year}-"
+
+        dernier = ContratClient.objects.filter(
+            numero__startswith=prefixe
+        ).aggregate(max_numero=Max('numero'))['max_numero']
+
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+
+        return f"{prefixe}{nouveau_numero:06d}"
+
+    @staticmethod
+    def proposer_numero():
+        """Retourne le prochain numéro SANS l'enregistrer (pour le formulaire)."""
+        from django.utils import timezone
+        from django.db.models import Max
+
+        year = timezone.now().year
+        prefixe = f"CTR-{year}-"
+
+        dernier = ContratClient.objects.filter(
+            numero__startswith=prefixe
+        ).aggregate(max_numero=Max('numero'))['max_numero']
+
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+
+        return f"{prefixe}{nouveau_numero:06d}"
+
     @property
     def est_actif(self):
         from datetime import date
@@ -288,23 +347,29 @@ class ContratClient(BaseModel, NumeroAutoMixin):
     def montant_ttc(self):
         return self.tarif + (self.tarif * self.tva / 100)
 
-    def save(self, *args, **kwargs):
-        if not self.numero:
-            self.numero = self.generate_numero()
-        super().save(*args, **kwargs)
-
+# ============================================================
+# PRESTATION
+# ============================================================
 
 # ============================================================
 # PRESTATION
 # ============================================================
 
+
 class Prestation(BaseModel):
     """Catalogue des prestations APG."""
-    code = models.CharField(max_length=30, unique=True, verbose_name="Code")
+
+    # ✅ CODE AUTO-GÉNÉRÉ : PRE-YYYY-NNNNNN
+    code = models.CharField(
+        max_length=30, unique=True, blank=True,
+        verbose_name="Code",
+        help_text="Généré automatiquement au format PRE-YYYY-NNNNNN"
+    )
     nom = models.CharField(max_length=200, verbose_name="Nom")
     description = models.TextField(blank=True, verbose_name="Description")
     tarif_base = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0, verbose_name="Tarif de base (GNF)")
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="Tarif de base (GNF)")
     unite = models.CharField(max_length=50, blank=True, verbose_name="Unité")
     actif = models.BooleanField(default=True, verbose_name="Active")
 
@@ -315,6 +380,59 @@ class Prestation(BaseModel):
 
     def __str__(self):
         return f"{self.code} — {self.nom}"
+
+    def save(self, *args, **kwargs):
+        """Génère automatiquement le code prestation s'il est vide."""
+        if not self.code:
+            self.code = self._generer_code()
+        super().save(*args, **kwargs)
+
+    def _generer_code(self):
+        """Génère un code unique PRE-YYYY-NNNNNN."""
+        from django.utils import timezone
+        from django.db.models import Max
+
+        year = timezone.now().year
+        prefixe = f"PRE-{year}-"
+
+        dernier = Prestation.objects.filter(
+            code__startswith=prefixe
+        ).aggregate(max_code=Max('code'))['max_code']
+
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+
+        return f"{prefixe}{nouveau_numero:06d}"
+
+    @staticmethod
+    def proposer_code():
+        """Retourne le prochain code SANS l'enregistrer (pour le formulaire)."""
+        from django.utils import timezone
+        from django.db.models import Max
+
+        year = timezone.now().year
+        prefixe = f"PRE-{year}-"
+
+        dernier = Prestation.objects.filter(
+            code__startswith=prefixe
+        ).aggregate(max_code=Max('code'))['max_code']
+
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+
+        return f"{prefixe}{nouveau_numero:06d}"
 
 
 # ============================================================
