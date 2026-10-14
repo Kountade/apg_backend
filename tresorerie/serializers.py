@@ -3,7 +3,7 @@ from rest_framework import serializers
 from .models import (
     Caisse, CompteBancaire, MouvementTresorerie,
     Encaissement, Decaissement, MouvementCaisse,
-    PrevisionTresorerie, AlerteTresorerie,
+    PrevisionTresorerie, AlerteTresorerie, RapprochementBancaire
 )
 
 
@@ -342,3 +342,34 @@ class AlerteTresorerieSerializer(serializers.ModelSerializer):
 
     def get_compte_nom(self, obj):
         return obj.compte_bancaire.nom if obj.compte_bancaire else None
+
+
+class RapprochementBancaireSerializer(serializers.ModelSerializer):
+    compte_nom = serializers.SerializerMethodField(read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    cloture_par_nom = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = RapprochementBancaire
+        fields = [
+            'id', 'compte_bancaire', 'compte_nom',
+            'mois', 'annee',
+            'solde_releve', 'solde_comptable', 'ecart',
+            'statut', 'statut_display',
+            'notes', 'releve',
+            'cloture_par', 'cloture_par_nom', 'date_cloture',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'ecart', 'created_at', 'updated_at',
+            'cloture_par', 'date_cloture',
+        ]
+
+    def get_compte_nom(self, obj):
+        return obj.compte_bancaire.nom if obj.compte_bancaire else None
+
+    def get_cloture_par_nom(self, obj):
+        if not obj.cloture_par:
+            return None
+        return obj.cloture_par.get_full_name() or obj.cloture_par.email

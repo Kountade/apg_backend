@@ -18,8 +18,11 @@ from core.pagination import StandardPagination
 from .models import (
     Caisse, CompteBancaire, MouvementTresorerie,
     Encaissement, Decaissement, MouvementCaisse,
-    PrevisionTresorerie, AlerteTresorerie,
+    PrevisionTresorerie, AlerteTresorerie, RapprochementBancaire
 )
+# Ajouter dans les imports
+
+
 from .serializers import (
     CaisseSerializer, CaisseListSerializer,
     CompteBancaireSerializer, CompteBancaireListSerializer,
@@ -29,6 +32,7 @@ from .serializers import (
     MouvementCaisseSerializer,
     PrevisionTresorerieSerializer,
     AlerteTresorerieSerializer,
+    RapprochementBancaireSerializer
 )
 
 
@@ -395,3 +399,33 @@ class AlerteTresorerieViewset(viewsets.ModelViewSet):
         alerte.date_resolution = timezone.now()
         alerte.save()
         return Response(AlerteTresorerieSerializer(alerte).data)
+
+
+class RapprochementBancaireViewset(viewsets.ModelViewSet):
+    """CRUD Rapprochements bancaires."""
+    queryset = RapprochementBancaire.objects.select_related(
+        'compte_bancaire', 'cloture_par'
+    ).all()
+    serializer_class = RapprochementBancaireSerializer
+    pagination_class = StandardPagination
+    search_fields = ['notes']
+    filterset_fields = ['statut', 'compte_bancaire', 'mois', 'annee']
+    ordering_fields = ['annee', 'mois']
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy',
+                           'cloturer']:
+            return [CanEditTresorerie()]
+        return [CanViewTresorerie()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        rapprochement = self.get_object()
+        rapprochement.statut = 'cloture'
+        rapprochement.cloture_par = request.user
+        rapprochement.date_cloture = timezone.now()
+        rapprochement.save()
+        return Response(RapprochementBancaireSerializer(rapprochement).data)

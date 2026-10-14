@@ -11,6 +11,7 @@ from .views import (
     MouvementCaisseViewset,
     PrevisionTresorerieViewset,
     AlerteTresorerieViewset,
+    RapprochementBancaireViewset
 )
 
 router = DefaultRouter()
@@ -25,6 +26,8 @@ router.register('mouvements-caisse', MouvementCaisseViewset,
                 basename='mouvements-caisse')
 router.register('previsions', PrevisionTresorerieViewset,
                 basename='previsions')
+router.register('rapprochement-bancaire',
+                RapprochementBancaireViewset, basename='rapprochement-bancaire')
 router.register('alertes-tresorerie', AlerteTresorerieViewset,
                 basename='alertes-tresorerie')
 

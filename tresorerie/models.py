@@ -23,10 +23,14 @@ class Caisse(BaseModel):
         related_name='caisses_gerees',
         verbose_name="Responsable",
     )
-    devise = models.CharField(max_length=10, default='GNF', verbose_name="Devise")
-    solde_initial = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Solde initial")
-    solde_theorique = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Solde théorique")
-    solde_physique = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Solde physique")
+    devise = models.CharField(
+        max_length=10, default='GNF', verbose_name="Devise")
+    solde_initial = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name="Solde initial")
+    solde_theorique = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name="Solde théorique")
+    solde_physique = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name="Solde physique")
     actif = models.BooleanField(default=True, verbose_name="Active")
     description = models.TextField(blank=True, verbose_name="Description")
 
@@ -45,8 +49,10 @@ class Caisse(BaseModel):
     def calculer_solde(self):
         """Recalcule le solde théorique à partir des mouvements."""
         from django.db.models import Sum
-        entrees = self.mouvements.filter(type='entree').aggregate(t=Sum('montant'))['t'] or 0
-        sorties = self.mouvements.filter(type='sortie').aggregate(t=Sum('montant'))['t'] or 0
+        entrees = self.mouvements.filter(
+            type='entree').aggregate(t=Sum('montant'))['t'] or 0
+        sorties = self.mouvements.filter(
+            type='sortie').aggregate(t=Sum('montant'))['t'] or 0
         self.solde_theorique = self.solde_initial + entrees - sorties
         self.save(update_fields=['solde_theorique'])
         return self.solde_theorique
@@ -68,15 +74,22 @@ class CompteBancaire(BaseModel):
 
     code = models.CharField(max_length=30, unique=True, verbose_name="Code")
     nom = models.CharField(max_length=100, verbose_name="Nom du compte")
-    type = models.CharField(max_length=30, choices=TYPE_CHOICES, default='banque', verbose_name="Type")
-    banque = models.CharField(max_length=100, blank=True, verbose_name="Banque / Opérateur")
-    numero_compte = models.CharField(max_length=50, blank=True, verbose_name="Numéro de compte")
+    type = models.CharField(
+        max_length=30, choices=TYPE_CHOICES, default='banque', verbose_name="Type")
+    banque = models.CharField(
+        max_length=100, blank=True, verbose_name="Banque / Opérateur")
+    numero_compte = models.CharField(
+        max_length=50, blank=True, verbose_name="Numéro de compte")
     iban = models.CharField(max_length=50, blank=True, verbose_name="IBAN")
     swift = models.CharField(max_length=20, blank=True, verbose_name="SWIFT")
-    titulaire = models.CharField(max_length=200, blank=True, verbose_name="Titulaire")
-    devise = models.CharField(max_length=10, default='GNF', verbose_name="Devise")
-    solde_initial = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Solde initial")
-    solde_actuel = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="Solde actuel")
+    titulaire = models.CharField(
+        max_length=200, blank=True, verbose_name="Titulaire")
+    devise = models.CharField(
+        max_length=10, default='GNF', verbose_name="Devise")
+    solde_initial = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name="Solde initial")
+    solde_actuel = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name="Solde actuel")
     actif = models.BooleanField(default=True, verbose_name="Actif")
     notes = models.TextField(blank=True, verbose_name="Notes")
 
@@ -115,9 +128,11 @@ class MouvementTresorerie(BaseModel):
         verbose_name="Numéro",
         help_text="Généré automatiquement au format MVT-YYYY-NNNNNN"
     )
-    type = models.CharField(max_length=10, choices=TYPE_CHOICES, verbose_name="Type")
+    type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, verbose_name="Type")
     date_mouvement = models.DateField(verbose_name="Date")
-    montant = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Montant (GNF)")
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name="Montant (GNF)")
     mode_paiement = models.CharField(
         max_length=30, choices=MODE_PAIEMENT_CHOICES,
         default='especes', verbose_name="Mode de paiement"
@@ -136,12 +151,16 @@ class MouvementTresorerie(BaseModel):
         verbose_name="Compte bancaire",
     )
 
-    origine = models.CharField(max_length=200, blank=True, verbose_name="Origine / Bénéficiaire")
-    reference = models.CharField(max_length=100, blank=True, verbose_name="Référence")
+    origine = models.CharField(
+        max_length=200, blank=True, verbose_name="Origine / Bénéficiaire")
+    reference = models.CharField(
+        max_length=100, blank=True, verbose_name="Référence")
     motif = models.TextField(blank=True, verbose_name="Motif")
 
-    module_source = models.CharField(max_length=50, blank=True, verbose_name="Module source")
-    object_id = models.CharField(max_length=50, blank=True, verbose_name="ID objet")
+    module_source = models.CharField(
+        max_length=50, blank=True, verbose_name="Module source")
+    object_id = models.CharField(
+        max_length=50, blank=True, verbose_name="ID objet")
 
     justificatif = models.FileField(
         upload_to='tresorerie/%Y/%m/',
@@ -222,9 +241,11 @@ class Encaissement(BaseModel):
         verbose_name="Numéro",
         help_text="Généré automatiquement au format ENC-YYYY-NNNNNN"
     )
-    type = models.CharField(max_length=30, choices=TYPE_CHOICES, verbose_name="Type")
+    type = models.CharField(
+        max_length=30, choices=TYPE_CHOICES, verbose_name="Type")
     date_encaissement = models.DateField(verbose_name="Date")
-    montant = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Montant (GNF)")
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name="Montant (GNF)")
     mode_paiement = models.CharField(
         max_length=30, choices=MODE_PAIEMENT_CHOICES,
         default='especes', verbose_name="Mode de paiement"
@@ -242,7 +263,8 @@ class Encaissement(BaseModel):
         max_length=100, blank=True,
         verbose_name="Référence facture"
     )
-    origine = models.CharField(max_length=200, blank=True, verbose_name="Origine / Source")
+    origine = models.CharField(
+        max_length=200, blank=True, verbose_name="Origine / Source")
 
     # Destination
     caisse = models.ForeignKey(
@@ -258,7 +280,8 @@ class Encaissement(BaseModel):
         verbose_name="Compte bancaire",
     )
 
-    reference = models.CharField(max_length=100, blank=True, verbose_name="Référence")
+    reference = models.CharField(
+        max_length=100, blank=True, verbose_name="Référence")
     motif = models.TextField(blank=True, verbose_name="Motif")
     justificatif = models.FileField(
         upload_to='encaissements/%Y/%m/',
@@ -278,7 +301,8 @@ class Encaissement(BaseModel):
         related_name='encaissements_valides',
         verbose_name="Validé par",
     )
-    date_validation = models.DateTimeField(null=True, blank=True, verbose_name="Date validation")
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date validation")
 
     class Meta:
         verbose_name = "Encaissement"
@@ -377,17 +401,22 @@ class Decaissement(BaseModel):
         verbose_name="Numéro",
         help_text="Généré automatiquement au format DEC-YYYY-NNNNNN"
     )
-    type = models.CharField(max_length=30, choices=TYPE_CHOICES, verbose_name="Type")
-    date_demande = models.DateField(auto_now_add=True, verbose_name="Date de demande")
-    date_paiement = models.DateField(null=True, blank=True, verbose_name="Date de paiement")
-    montant = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Montant (GNF)")
+    type = models.CharField(
+        max_length=30, choices=TYPE_CHOICES, verbose_name="Type")
+    date_demande = models.DateField(
+        auto_now_add=True, verbose_name="Date de demande")
+    date_paiement = models.DateField(
+        null=True, blank=True, verbose_name="Date de paiement")
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name="Montant (GNF)")
     mode_paiement = models.CharField(
         max_length=30, choices=MODE_PAIEMENT_CHOICES,
         default='especes', verbose_name="Mode de paiement"
     )
 
     # Bénéficiaire
-    beneficiaire = models.CharField(max_length=200, blank=True, verbose_name="Bénéficiaire")
+    beneficiaire = models.CharField(
+        max_length=200, blank=True, verbose_name="Bénéficiaire")
     # ✅ TEMPORAIRE : CharField au lieu de FK vers achats.Fournisseur
     fournisseur_reference = models.CharField(
         max_length=200, blank=True,
@@ -409,7 +438,8 @@ class Decaissement(BaseModel):
     )
 
     motif = models.TextField(verbose_name="Motif")
-    reference = models.CharField(max_length=100, blank=True, verbose_name="Référence")
+    reference = models.CharField(
+        max_length=100, blank=True, verbose_name="Référence")
     justificatif = models.FileField(
         upload_to='decaissements/%Y/%m/',
         null=True, blank=True,
@@ -517,9 +547,11 @@ class MouvementCaisse(BaseModel):
         related_name='mouvements_caisse_detail',
         verbose_name="Caisse"
     )
-    type = models.CharField(max_length=10, choices=TYPE_CHOICES, verbose_name="Type")
+    type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, verbose_name="Type")
     date_mouvement = models.DateField(auto_now_add=True, verbose_name="Date")
-    montant = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Montant")
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name="Montant")
     libelle = models.CharField(max_length=300, verbose_name="Libellé")
 
     encaissement = models.ForeignKey(
@@ -557,9 +589,11 @@ class PrevisionTresorerie(BaseModel):
     ]
 
     date_prevue = models.DateField(verbose_name="Date prévue")
-    type = models.CharField(max_length=10, choices=TYPE_CHOICES, verbose_name="Type")
+    type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, verbose_name="Type")
     libelle = models.CharField(max_length=300, verbose_name="Libellé")
-    montant = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Montant")
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name="Montant")
     realise = models.BooleanField(default=False, verbose_name="Réalisé")
     notes = models.TextField(blank=True, verbose_name="Notes")
 
@@ -587,7 +621,8 @@ class AlerteTresorerie(BaseModel):
 
     titre = models.CharField(max_length=200, verbose_name="Titre")
     message = models.TextField(verbose_name="Message")
-    niveau = models.CharField(max_length=20, choices=NIVEAU_CHOICES, default='info', verbose_name="Niveau")
+    niveau = models.CharField(
+        max_length=20, choices=NIVEAU_CHOICES, default='info', verbose_name="Niveau")
     caisse = models.ForeignKey(
         Caisse, null=True, blank=True,
         on_delete=models.SET_NULL,
@@ -601,7 +636,8 @@ class AlerteTresorerie(BaseModel):
         verbose_name="Compte"
     )
     resolue = models.BooleanField(default=False, verbose_name="Résolue")
-    date_resolution = models.DateTimeField(null=True, blank=True, verbose_name="Date résolution")
+    date_resolution = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date résolution")
 
     class Meta:
         verbose_name = "Alerte trésorerie"
@@ -610,3 +646,68 @@ class AlerteTresorerie(BaseModel):
 
     def __str__(self):
         return f"[{self.get_niveau_display()}] {self.titre}"
+
+    # ============================================================
+# RAPPROCHEMENT BANCAIRE
+# ============================================================
+
+
+class RapprochementBancaire(BaseModel):
+    """Rapprochement bancaire."""
+
+    STATUT_CHOICES = [
+        ('en_cours', 'En cours'),
+        ('equilibre', 'Équilibré'),
+        ('ecart', 'Écart détecté'),
+        ('cloture', 'Clôturé'),
+    ]
+
+    compte_bancaire = models.ForeignKey(
+        CompteBancaire,
+        on_delete=models.CASCADE,
+        related_name='rapprochements',
+        verbose_name="Compte bancaire",
+    )
+    mois = models.IntegerField(verbose_name="Mois")
+    annee = models.IntegerField(verbose_name="Année")
+
+    solde_releve = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name="Solde du relevé")
+    solde_comptable = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name="Solde comptable")
+    ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name="Écart")
+
+    statut = models.CharField(
+        max_length=20, choices=STATUT_CHOICES,
+        default='en_cours', verbose_name="Statut"
+    )
+    notes = models.TextField(blank=True, verbose_name="Notes")
+    releve = models.FileField(
+        upload_to='rapprochements/%Y/%m/',
+        null=True, blank=True,
+        verbose_name="Relevé bancaire"
+    )
+
+    cloture_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='rapprochements_clotures',
+        verbose_name="Clôturé par",
+    )
+    date_cloture = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date clôture")
+
+    class Meta:
+        verbose_name = "Rapprochement bancaire"
+        verbose_name_plural = "Rapprochements bancaires"
+        unique_together = ['compte_bancaire', 'mois', 'annee']
+        ordering = ['-annee', '-mois']
+
+    def __str__(self):
+        return f"{self.compte_bancaire} — {self.mois:02d}/{self.annee}"
+
+    def save(self, *args, **kwargs):
+        self.ecart = self.solde_releve - self.solde_comptable
+        super().save(*args, **kwargs)
