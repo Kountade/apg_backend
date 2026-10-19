@@ -5,6 +5,166 @@ from core.models import BaseModel, SoftDeleteModel, NumeroAutoMixin
 
 
 # ============================================================
+# TYPE DE CONTRAT (référentiel centralisé)
+# ============================================================
+
+class TypeContrat(BaseModel):
+    """
+    Référentiel centralisé des types de contrats.
+    Sert à la fois pour les employés et les clients.
+    """
+
+    CATEGORIE_CHOICES = [
+        ('emploi', 'Contrat de travail'),
+        ('client', 'Contrat client / prestation'),
+        ('fournisseur', 'Contrat fournisseur'),
+        ('partenariat', 'Contrat de partenariat'),
+        ('bail', 'Bail / location'),
+        ('maintenance', 'Maintenance'),
+        ('autre', 'Autre'),
+    ]
+
+    STATUT_CHOICES = [
+        ('actif', 'Actif'),
+        ('inactif', 'Inactif'),
+        ('archive', 'Archivé'),
+    ]
+
+    # ✅ CODE AUTO-GÉNÉRÉ : TCT-YYYY-NNNNNN
+    code = models.CharField(
+        max_length=30, unique=True, blank=True,
+        verbose_name="Code",
+        help_text="Généré automatiquement au format TCT-YYYY-NNNNNN"
+    )
+
+    titre = models.CharField(
+        max_length=200, verbose_name="Titre du contrat",
+        help_text="Ex : Contrat de travail à durée indéterminée"
+    )
+    categorie = models.CharField(
+        max_length=30, choices=CATEGORIE_CHOICES, default='emploi',
+        verbose_name="Catégorie"
+    )
+    description = models.TextField(
+        verbose_name="Description / Contenu type",
+        help_text="Texte complet du contrat (modèle réutilisable)"
+    )
+
+    # Contenu du contrat (peut être un modèle réutilisable)
+    contenu = models.TextField(
+        blank=True, verbose_name="Corps du contrat",
+        help_text="Texte complet du contrat qui sera repris comme base"
+    )
+
+    # Durée par défaut
+    duree_mois = models.IntegerField(
+        null=True, blank=True,
+        verbose_name="Durée par défaut (mois)",
+        help_text="Laisser vide pour durée indéterminée"
+    )
+
+    # Période d'essai
+    periode_essai_jours = models.IntegerField(
+        null=True, blank=True,
+        verbose_name="Période d'essai (jours)"
+    )
+
+    # Préavis
+    preavis_jours = models.IntegerField(
+        default=30, verbose_name="Préavis (jours)"
+    )
+
+    # Références légales
+    reference_legale = models.CharField(
+        max_length=200, blank=True,
+        verbose_name="Référence légale",
+        help_text="Ex : Article L.1221-2 du Code du travail"
+    )
+
+    # Fichier modèle (PDF, DOCX)
+    fichier_modele = models.FileField(
+        upload_to='contrats/types/%Y/', null=True, blank=True,
+        verbose_name="Fichier modèle (PDF/DOCX)"
+    )
+
+    # Statut
+    statut = models.CharField(
+        max_length=20, choices=STATUT_CHOICES, default='actif',
+        verbose_name="Statut"
+    )
+
+    ordre = models.IntegerField(
+        default=0, verbose_name="Ordre d'affichage"
+    )
+
+    notes = models.TextField(blank=True, verbose_name="Notes internes")
+
+    class Meta:
+        verbose_name = "Type de contrat"
+        verbose_name_plural = "Types de contrats"
+        ordering = ['categorie', 'ordre', 'titre']
+        indexes = [
+            models.Index(fields=['code']),
+            models.Index(fields=['categorie', 'statut']),
+        ]
+
+    def __str__(self):
+        return f"{self.code} — {self.titre}"
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self._generer_code()
+        super().save(*args, **kwargs)
+
+    def _generer_code(self):
+        """Génère un code unique TCT-YYYY-NNNNNN."""
+        from django.utils import timezone
+        from django.db.models import Max
+
+        year = timezone.now().year
+        prefixe = f"TCT-{year}-"
+
+        dernier = TypeContrat.objects.filter(
+            code__startswith=prefixe
+        ).aggregate(max_code=Max('code'))['max_code']
+
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+
+        return f"{prefixe}{nouveau_numero:06d}"
+
+    @staticmethod
+    def proposer_code():
+        """Retourne le prochain code SANS l'enregistrer (pour le formulaire)."""
+        from django.utils import timezone
+        from django.db.models import Max
+
+        year = timezone.now().year
+        prefixe = f"TCT-{year}-"
+
+        dernier = TypeContrat.objects.filter(
+            code__startswith=prefixe
+        ).aggregate(max_code=Max('code'))['max_code']
+
+        if dernier:
+            try:
+                numero = int(dernier.split('-')[-1])
+                nouveau_numero = numero + 1
+            except (ValueError, IndexError):
+                nouveau_numero = 1
+        else:
+            nouveau_numero = 1
+
+        return f"{prefixe}{nouveau_numero:06d}"
+
+
+# ============================================================
 # CLIENT
 # ============================================================
 
@@ -112,13 +272,11 @@ class Client(SoftDeleteModel):
         return f"{self.code} — {self.nom_complet}"
 
     def save(self, *args, **kwargs):
-        """Génère automatiquement le code client s'il est vide."""
         if not self.code:
             self.code = self._generer_code()
         super().save(*args, **kwargs)
 
     def _generer_code(self):
-        """Génère un code unique CLI-YYYY-NNNNNN."""
         from django.utils import timezone
         from django.db.models import Max
 
@@ -148,7 +306,6 @@ class Client(SoftDeleteModel):
 
     @property
     def solde_du(self):
-        """Montant total dû (0 tant que comptabilite n'existe pas)."""
         return 0
 
     @property
@@ -159,10 +316,6 @@ class Client(SoftDeleteModel):
     def total_paye(self):
         return 0
 
-
-# ============================================================
-# CONTRAT CLIENT
-# ============================================================
 
 # ============================================================
 # CONTRAT CLIENT
@@ -206,6 +359,16 @@ class ContratClient(BaseModel):
     )
     client = models.ForeignKey(
         Client, on_delete=models.CASCADE, related_name='contrats', verbose_name="Client")
+
+    # ✅ NOUVEAU : lien vers le référentiel des types de contrats
+    type_contrat = models.ForeignKey(
+        'clients.TypeContrat',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='contrats_clients',
+        verbose_name="Type de contrat",
+        help_text="Modèle de contrat utilisé (pré-remplit le contenu)"
+    )
 
     prestation = models.CharField(max_length=200, verbose_name="Prestation")
     description = models.TextField(blank=True, verbose_name="Description")
@@ -267,13 +430,11 @@ class ContratClient(BaseModel):
         return f"{self.numero} — {self.client.nom_complet}"
 
     def save(self, *args, **kwargs):
-        """Génère automatiquement le numéro de contrat s'il est vide."""
         if not self.numero:
             self.numero = self._generer_numero()
         super().save(*args, **kwargs)
 
     def _generer_numero(self):
-        """Génère un numéro unique CTR-YYYY-NNNNNN."""
         from django.utils import timezone
         from django.db.models import Max
 
@@ -297,7 +458,6 @@ class ContratClient(BaseModel):
 
     @staticmethod
     def proposer_numero():
-        """Retourne le prochain numéro SANS l'enregistrer (pour le formulaire)."""
         from django.utils import timezone
         from django.db.models import Max
 
@@ -347,14 +507,10 @@ class ContratClient(BaseModel):
     def montant_ttc(self):
         return self.tarif + (self.tarif * self.tva / 100)
 
-# ============================================================
-# PRESTATION
-# ============================================================
 
 # ============================================================
 # PRESTATION
 # ============================================================
-
 
 class Prestation(BaseModel):
     """Catalogue des prestations APG."""
@@ -382,13 +538,11 @@ class Prestation(BaseModel):
         return f"{self.code} — {self.nom}"
 
     def save(self, *args, **kwargs):
-        """Génère automatiquement le code prestation s'il est vide."""
         if not self.code:
             self.code = self._generer_code()
         super().save(*args, **kwargs)
 
     def _generer_code(self):
-        """Génère un code unique PRE-YYYY-NNNNNN."""
         from django.utils import timezone
         from django.db.models import Max
 
@@ -412,7 +566,6 @@ class Prestation(BaseModel):
 
     @staticmethod
     def proposer_code():
-        """Retourne le prochain code SANS l'enregistrer (pour le formulaire)."""
         from django.utils import timezone
         from django.db.models import Max
 
@@ -453,7 +606,6 @@ class Relance(BaseModel):
     client = models.ForeignKey(
         Client, on_delete=models.CASCADE, related_name='relances', verbose_name="Client")
 
-    # Référence texte (pas de FK vers comptabilite pour l'instant)
     facture_reference = models.CharField(
         max_length=100, blank=True,
         verbose_name="Référence facture"

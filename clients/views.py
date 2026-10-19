@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db.models import Count, Sum, Q
+from datetime import date, timedelta
 
 from core.permissions import (
     CanViewClients, CanEditClients,
@@ -11,14 +12,89 @@ from core.permissions import (
 )
 from core.pagination import StandardPagination
 
-from .models import Client, ContratClient, Prestation, Relance
+from .models import Client, ContratClient, Prestation, Relance, TypeContrat
 from .serializers import (
     ClientSerializer, ClientListSerializer, ClientWriteSerializer,
     ContratClientSerializer, ContratClientListSerializer,
     ContratClientValidationSerializer,
     PrestationSerializer,
     RelanceSerializer,
+    TypeContratSerializer, TypeContratListSerializer,
 )
+
+
+# ============================================================
+# TYPE DE CONTRAT (référentiel)
+# ============================================================
+
+class TypeContratViewset(viewsets.ModelViewSet):
+    """CRUD des types de contrats (référentiel)."""
+    queryset = TypeContrat.objects.all()
+    pagination_class = StandardPagination
+    search_fields = ['code', 'titre', 'description', 'reference_legale']
+    filterset_fields = ['categorie', 'statut']
+    ordering_fields = ['titre', 'ordre', 'created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return TypeContratListSerializer
+        return TypeContratSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [CanEditClients()]
+        return [CanViewClients()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def prochain_code(self, request):
+        """Retourne le prochain code proposé (sans l'enregistrer)."""
+        code = TypeContrat.proposer_code()
+        return Response({'code': code})
+
+    @action(detail=False, methods=['get'])
+    def actifs(self, request):
+        """Liste les types de contrats actifs (pour les formulaires)."""
+        qs = TypeContrat.objects.filter(statut='actif')
+        serializer = TypeContratListSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def par_categorie(self, request):
+        """Retourne les types de contrats groupés par catégorie."""
+        qs = TypeContrat.objects.filter(statut='actif')
+        categories = {}
+        for t in qs:
+            if t.categorie not in categories:
+                categories[t.categorie] = {
+                    'categorie': t.categorie,
+                    'label': t.get_categorie_display(),
+                    'types': [],
+                }
+            categories[t.categorie]['types'].append(
+                TypeContratListSerializer(t).data
+            )
+        return Response(list(categories.values()))
+
+    @action(detail=False, methods=['get'])
+    def statistiques(self, request):
+        """Statistiques des types de contrats."""
+        qs = TypeContrat.objects.all()
+        data = {
+            'total': qs.count(),
+            'actifs': qs.filter(statut='actif').count(),
+            'par_categorie': list(
+                qs.values('categorie').annotate(
+                    total=Count('id')
+                ).order_by('-total')
+            ),
+        }
+        return Response(data)
 
 
 # ============================================================
@@ -61,7 +137,7 @@ class ClientViewset(viewsets.ModelViewSet):
     def contrats(self, request, pk=None):
         """Liste les contrats d'un client."""
         client = self.get_object()
-        contrats = client.contrats.all()
+        contrats = client.contrats.select_related('type_contrat').all()
         serializer = ContratClientSerializer(contrats, many=True)
         return Response(serializer.data)
 
@@ -110,16 +186,15 @@ class ClientViewset(viewsets.ModelViewSet):
 # CONTRAT CLIENT
 # ============================================================
 
-# ============================================================
-# CONTRAT CLIENT
-# ============================================================
-
 class ContratClientViewset(viewsets.ModelViewSet):
     """CRUD Contrats clients."""
-    queryset = ContratClient.objects.select_related('client', 'equipe').all()
+    queryset = ContratClient.objects.select_related(
+        'client', 'equipe', 'type_contrat'
+    ).all()
     pagination_class = StandardPagination
-    search_fields = ['numero', 'client__nom', 'prestation']
-    filterset_fields = ['statut', 'client', 'frequence']
+    search_fields = ['numero', 'client__nom',
+                     'prestation', 'type_contrat__titre']
+    filterset_fields = ['statut', 'client', 'frequence', 'type_contrat']
     ordering_fields = ['date_debut', 'date_fin', 'tarif']
 
     def get_serializer_class(self):
@@ -179,13 +254,12 @@ class ContratClientViewset(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def expirant(self, request):
         """Contrats qui expirent dans les 30 prochains jours."""
-        from datetime import date, timedelta
         seuil = date.today() + timedelta(days=30)
         qs = ContratClient.objects.filter(
             statut='actif',
             date_fin__lte=seuil,
             date_fin__gte=date.today()
-        ).select_related('client')
+        ).select_related('client', 'type_contrat')
         serializer = ContratClientListSerializer(qs, many=True)
         return Response(serializer.data)
 
@@ -193,18 +267,37 @@ class ContratClientViewset(viewsets.ModelViewSet):
     def actifs(self, request):
         """Contrats actifs."""
         qs = ContratClient.objects.filter(
-            statut='actif').select_related('client')
+            statut='actif'
+        ).select_related('client', 'type_contrat')
         serializer = ContratClientListSerializer(qs, many=True)
         return Response(serializer.data)
 
-# ============================================================
-# PRESTATION
-# ============================================================
+    @action(detail=False, methods=['get'])
+    def par_type(self, request):
+        """Contrats groupés par type de contrat."""
+        qs = ContratClient.objects.select_related(
+            'client', 'type_contrat'
+        ).all()
+        types = {}
+        for c in qs:
+            key = c.type_contrat_id or 'sans_type'
+            if key not in types:
+                types[key] = {
+                    'type_contrat': c.type_contrat_id,
+                    'type_contrat_titre': (
+                        c.type_contrat.titre if c.type_contrat else 'Sans type'
+                    ),
+                    'contrats': [],
+                }
+            types[key]['contrats'].append(
+                ContratClientListSerializer(c).data
+            )
+        return Response(list(types.values()))
+
 
 # ============================================================
 # PRESTATION
 # ============================================================
-
 
 class PrestationViewset(viewsets.ModelViewSet):
     """CRUD Prestations."""
@@ -232,10 +325,10 @@ class PrestationViewset(viewsets.ModelViewSet):
         code = Prestation.proposer_code()
         return Response({'code': code})
 
+
 # ============================================================
 # RELANCE
 # ============================================================
-
 
 class RelanceViewset(viewsets.ModelViewSet):
     """CRUD Relances."""

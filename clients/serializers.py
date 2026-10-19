@@ -1,6 +1,67 @@
 # clients/serializers.py
 from rest_framework import serializers
-from .models import Client, ContratClient, Prestation, Relance
+from .models import (
+    Client, ContratClient, Prestation, Relance, TypeContrat,
+)
+
+
+# ============================================================
+# TYPE DE CONTRAT (référentiel)
+# ============================================================
+
+class TypeContratSerializer(serializers.ModelSerializer):
+    """Lecture / écriture TypeContrat avec code auto-généré."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = TypeContrat
+        fields = [
+            'id', 'code', 'titre',
+            'categorie', 'categorie_display',
+            'description', 'contenu',
+            'duree_mois', 'periode_essai_jours', 'preavis_jours',
+            'reference_legale',
+            'fichier_modele',
+            'statut', 'statut_display',
+            'ordre', 'notes',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'code': {
+                'required': False,
+                'allow_blank': True,
+            }
+        }
+
+    def validate_code(self, value):
+        if not value:
+            return value
+        qs = TypeContrat.objects.filter(code=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "Ce code de type de contrat est déjà utilisé."
+            )
+        return value
+
+
+class TypeContratListSerializer(serializers.ModelSerializer):
+    """Version allégée pour les listes déroulantes."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = TypeContrat
+        fields = [
+            'id', 'code', 'titre',
+            'categorie', 'categorie_display',
+            'duree_mois', 'statut',
+        ]
 
 
 # ============================================================
@@ -90,12 +151,8 @@ class ClientWriteSerializer(serializers.ModelSerializer):
 # CONTRAT CLIENT
 # ============================================================
 
-# ============================================================
-# CONTRAT CLIENT
-# ============================================================
-
 class ContratClientSerializer(serializers.ModelSerializer):
-    """Lecture ContratClient avec numéro auto-généré et modifiable."""
+    """Lecture / écriture ContratClient avec type_contrat intégré."""
     client_nom = serializers.SerializerMethodField(read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -109,10 +166,23 @@ class ContratClientSerializer(serializers.ModelSerializer):
     montant_ttc = serializers.ReadOnlyField()
     equipe_nom = serializers.SerializerMethodField(read_only=True)
 
+    # ✅ NOUVEAU : type_contrat
+    type_contrat = serializers.PrimaryKeyRelatedField(
+        queryset=TypeContrat.objects.filter(statut='actif'),
+        required=False, allow_null=True,
+    )
+    type_contrat_titre = serializers.SerializerMethodField(read_only=True)
+    type_contrat_code = serializers.SerializerMethodField(read_only=True)
+    type_contrat_contenu = serializers.SerializerMethodField(read_only=True)
+    type_contrat_categorie = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = ContratClient
         fields = [
             'id', 'numero', 'client', 'client_nom',
+            # ✅ NOUVEAU
+            'type_contrat', 'type_contrat_titre', 'type_contrat_code',
+            'type_contrat_contenu', 'type_contrat_categorie',
             'prestation', 'description',
             'frequence', 'frequence_display',
             'zone',
@@ -139,10 +209,29 @@ class ContratClientSerializer(serializers.ModelSerializer):
             }
         }
 
+    # ---------- Méthodes enrichies ----------
+    def get_client_nom(self, obj):
+        return obj.client.nom_complet if obj.client else None
+
+    def get_equipe_nom(self, obj):
+        return obj.equipe.nom_complet if obj.equipe else None
+
+    def get_type_contrat_titre(self, obj):
+        return obj.type_contrat.titre if obj.type_contrat else None
+
+    def get_type_contrat_code(self, obj):
+        return obj.type_contrat.code if obj.type_contrat else None
+
+    def get_type_contrat_contenu(self, obj):
+        return obj.type_contrat.contenu if obj.type_contrat else None
+
+    def get_type_contrat_categorie(self, obj):
+        return obj.type_contrat.get_categorie_display() if obj.type_contrat else None
+
+    # ---------- Validations ----------
     def validate_numero(self, value):
-        """Vérifie l'unicité du numéro (sauf en modification)."""
         if not value:
-            return value  # Sera généré automatiquement par le modèle
+            return value
         qs = ContratClient.objects.filter(numero=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
@@ -151,12 +240,6 @@ class ContratClientSerializer(serializers.ModelSerializer):
                 "Ce numéro de contrat est déjà utilisé."
             )
         return value
-
-    def get_client_nom(self, obj):
-        return obj.client.nom_complet if obj.client else None
-
-    def get_equipe_nom(self, obj):
-        return obj.equipe.nom_complet if obj.equipe else None
 
     def validate(self, data):
         date_debut = data.get('date_debut')
@@ -167,16 +250,20 @@ class ContratClientSerializer(serializers.ModelSerializer):
             )
         return data
 
+
 class ContratClientListSerializer(serializers.ModelSerializer):
-    """Version allégée."""
+    """Version allégée avec type_contrat_titre."""
     client_nom = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    type_contrat_titre = serializers.SerializerMethodField()
 
     class Meta:
         model = ContratClient
         fields = [
             'id', 'numero', 'client', 'client_nom',
+            # ✅ NOUVEAU
+            'type_contrat', 'type_contrat_titre',
             'prestation', 'frequence',
             'date_debut', 'date_fin',
             'tarif', 'statut', 'statut_display',
@@ -185,6 +272,9 @@ class ContratClientListSerializer(serializers.ModelSerializer):
     def get_client_nom(self, obj):
         return obj.client.nom_complet if obj.client else None
 
+    def get_type_contrat_titre(self, obj):
+        return obj.type_contrat.titre if obj.type_contrat else None
+
 
 class ContratClientValidationSerializer(serializers.Serializer):
     """Serializer pour valider un contrat."""
@@ -192,10 +282,6 @@ class ContratClientValidationSerializer(serializers.Serializer):
         choices=['valider', 'resilier', 'suspendre'])
     commentaire = serializers.CharField(required=False, allow_blank=True)
 
-
-# ============================================================
-# PRESTATION
-# ============================================================
 
 # ============================================================
 # PRESTATION
@@ -220,9 +306,8 @@ class PrestationSerializer(serializers.ModelSerializer):
         }
 
     def validate_code(self, value):
-        """Vérifie l'unicité du code (sauf en modification)."""
         if not value:
-            return value  # Sera généré automatiquement par le modèle
+            return value
         qs = Prestation.objects.filter(code=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
@@ -232,10 +317,10 @@ class PrestationSerializer(serializers.ModelSerializer):
             )
         return value
 
+
 # ============================================================
 # RELANCE
 # ============================================================
-
 
 class RelanceSerializer(serializers.ModelSerializer):
     client_nom = serializers.SerializerMethodField(read_only=True)
