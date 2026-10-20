@@ -177,6 +177,10 @@ class EmployeWriteSerializer(serializers.ModelSerializer):
 # CONTRATS
 # ============================================================
 
+# ============================================================
+# CONTRATS
+# ============================================================
+
 class ContratSerializer(serializers.ModelSerializer):
     employe_nom = serializers.SerializerMethodField(read_only=True)
     type_display = serializers.CharField(
@@ -185,10 +189,27 @@ class ContratSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     est_expire = serializers.ReadOnlyField()
 
+    # ✅ NOUVEAU : type_contrat (référentiel)
+    type_contrat = serializers.PrimaryKeyRelatedField(
+        queryset=__import__('clients.models', fromlist=['TypeContrat']).TypeContrat.objects.filter(
+            statut='actif',
+            categorie='emploi',  # optionnel : limiter aux types "emploi"
+        ),
+        required=False, allow_null=True,
+    )
+    type_contrat_titre = serializers.SerializerMethodField(read_only=True)
+    type_contrat_code = serializers.SerializerMethodField(read_only=True)
+    type_contrat_contenu = serializers.SerializerMethodField(read_only=True)
+    type_contrat_categorie = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Contrat
         fields = [
             'id', 'numero', 'employe', 'employe_nom',
+            # ✅ NOUVEAU
+            'type_contrat', 'type_contrat_titre', 'type_contrat_code',
+            'type_contrat_contenu', 'type_contrat_categorie',
+            # Champs existants
             'type', 'type_display',
             'date_debut', 'date_fin',
             'salaire', 'document',
@@ -198,9 +219,23 @@ class ContratSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'est_expire']
 
+    # ---------- Méthodes enrichies ----------
     def get_employe_nom(self, obj):
         return obj.employe.nom_complet if obj.employe else None
 
+    def get_type_contrat_titre(self, obj):
+        return obj.type_contrat.titre if obj.type_contrat else None
+
+    def get_type_contrat_code(self, obj):
+        return obj.type_contrat.code if obj.type_contrat else None
+
+    def get_type_contrat_contenu(self, obj):
+        return obj.type_contrat.contenu if obj.type_contrat else None
+
+    def get_type_contrat_categorie(self, obj):
+        return obj.type_contrat.get_categorie_display() if obj.type_contrat else None
+
+    # ---------- Validation ----------
     def validate(self, data):
         date_debut = data.get('date_debut')
         date_fin = data.get('date_fin')
@@ -209,7 +244,6 @@ class ContratSerializer(serializers.ModelSerializer):
                 "La date de fin doit être postérieure à la date de début."
             )
         return data
-
 
 # ============================================================
 # PRÉSENCES

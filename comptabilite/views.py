@@ -1,6 +1,3 @@
-from django.shortcuts import render
-
-# Create your views here.
 # comptabilite/views.py
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -20,18 +17,26 @@ from .models import (
     CompteComptable, Journal,
     Facture, LigneFacture,
     Devis, LigneDevis,
+    Avoir,
+    PaiementClient,
+    Litige,
     EcritureComptable, LigneEcriture,
     Lettrage, DeclarationFiscale,
+    ClotureComptable,  # ✅ NOUVEAU
 )
 from .serializers import (
     CompteComptableSerializer, CompteComptableListSerializer,
     JournalSerializer, JournalListSerializer,
     FactureSerializer, FactureListSerializer, LigneFactureSerializer,
     DevisSerializer, DevisListSerializer, LigneDevisSerializer,
+    AvoirSerializer,
+    PaiementClientSerializer,
+    LitigeSerializer,
     EcritureComptableSerializer, EcritureComptableListSerializer,
     LigneEcritureSerializer,
     LettrageSerializer,
     DeclarationFiscaleSerializer, DeclarationFiscaleListSerializer,
+    ClotureComptableSerializer, ClotureComptableListSerializer,  # ✅ NOUVEAU
 )
 
 
@@ -122,7 +127,8 @@ class FactureViewset(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy',
-                           'emettre', 'valider', 'annuler']:
+                           'emettre', 'valider', 'annuler',
+                           'enregistrer_paiement']:
             return [CanEditComptabilite()]
         return [CanViewComptabilite()]
 
@@ -172,6 +178,16 @@ class FactureViewset(viewsets.ModelViewSet):
         serializer = FactureListSerializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def creances(self, request):
+        """Créances clients : factures avec solde restant > 0."""
+        qs = Facture.objects.filter(
+            statut__in=['emise', 'envoyee',
+                        'partiellement_payee', 'en_retard']
+        ).select_related('client')
+        serializer = FactureListSerializer(qs, many=True)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'])
     def emettre(self, request, pk=None):
         """Émettre une facture (brouillon → émise)."""
@@ -187,7 +203,7 @@ class FactureViewset(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
-        """Valider une facture."""
+        """Valider une facture (émise → envoyée)."""
         facture = self.get_object()
         facture.statut = 'envoyee'
         facture.save()
@@ -308,7 +324,6 @@ class DevisViewset(viewsets.ModelViewSet):
                 {"error": "Ce devis a déjà été transformé en facture."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Créer la facture
         facture = Facture.objects.create(
             client=devis.client,
             type='definitive',
@@ -320,7 +335,6 @@ class DevisViewset(viewsets.ModelViewSet):
             emise_par=request.user,
             created_by=request.user,
         )
-        # Copier les lignes
         for ligne in devis.lignes.all():
             LigneFacture.objects.create(
                 facture=facture,
@@ -328,7 +342,6 @@ class DevisViewset(viewsets.ModelViewSet):
                 quantite=ligne.quantite,
                 prix_unitaire=ligne.prix_unitaire,
             )
-        # Mettre à jour le devis
         devis.facture_generee = facture
         devis.statut = 'transforme'
         devis.save()
@@ -336,6 +349,94 @@ class DevisViewset(viewsets.ModelViewSet):
             'message': 'Devis transformé en facture avec succès.',
             'facture': FactureSerializer(facture).data,
         })
+
+
+# ============================================================
+# AVOIR
+# ============================================================
+
+class AvoirViewset(viewsets.ModelViewSet):
+    """CRUD Avoirs clients."""
+    queryset = Avoir.objects.select_related(
+        'client', 'facture_origine').all()
+    serializer_class = AvoirSerializer
+    pagination_class = StandardPagination
+    search_fields = ['numero', 'client__nom', 'objet', 'motif']
+    filterset_fields = ['statut', 'client']
+    ordering_fields = ['date_avoir', 'montant_ttc']
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [CanEditComptabilite()]
+        return [CanViewComptabilite()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+# ============================================================
+# PAIEMENT CLIENT
+# ============================================================
+
+class PaiementClientViewset(viewsets.ModelViewSet):
+    """CRUD Paiements clients."""
+    queryset = PaiementClient.objects.select_related(
+        'client', 'facture').all()
+    serializer_class = PaiementClientSerializer
+    pagination_class = StandardPagination
+    search_fields = ['numero', 'client__nom', 'facture__numero', 'reference']
+    filterset_fields = ['statut', 'mode', 'client', 'facture']
+    ordering_fields = ['date_paiement', 'montant']
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [CanEditComptabilite()]
+        return [CanViewComptabilite()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+# ============================================================
+# LITIGE
+# ============================================================
+
+class LitigeViewset(viewsets.ModelViewSet):
+    """CRUD Litiges."""
+    queryset = Litige.objects.select_related(
+        'client', 'facture').all()
+    serializer_class = LitigeSerializer
+    pagination_class = StandardPagination
+    search_fields = ['numero', 'client__nom', 'facture__numero', 'motif']
+    filterset_fields = ['statut', 'client']
+    ordering_fields = ['date_ouverture']
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [CanEditComptabilite()]
+        return [CanViewComptabilite()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def resoudre(self, request, pk=None):
+        """Marquer un litige comme résolu."""
+        litige = self.get_object()
+        litige.statut = 'resolu'
+        litige.date_resolution = date.today()
+        litige.resolution = request.data.get('resolution', '')
+        litige.save()
+        return Response(LitigeSerializer(litige).data)
 
 
 # ============================================================
@@ -401,6 +502,26 @@ class EcritureComptableViewset(viewsets.ModelViewSet):
         serializer = LigneEcritureSerializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def balance(self, request):
+        """Balance générale : totaux débit/crédit par compte."""
+        comptes = CompteComptable.objects.filter(actif=True)
+        data = []
+        for compte in comptes:
+            lignes = compte.lignes_ecriture.filter(ecriture__statut='validee')
+            debit = lignes.aggregate(t=Sum('debit'))['t'] or 0
+            credit = lignes.aggregate(t=Sum('credit'))['t'] or 0
+            if debit or credit:
+                data.append({
+                    'compte_id': compte.id,
+                    'numero': compte.numero,
+                    'libelle': compte.libelle,
+                    'debit': float(debit),
+                    'credit': float(credit),
+                    'solde': float(debit) - float(credit),
+                })
+        return Response(data)
+
 
 # ============================================================
 # LETTRAGE
@@ -448,3 +569,97 @@ class DeclarationFiscaleViewset(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+
+# ============================================================
+# CLÔTURE COMPTABLE ✅ NOUVEAU
+# ============================================================
+
+class ClotureComptableViewset(viewsets.ModelViewSet):
+    """CRUD Clôtures comptables + workflow."""
+    queryset = ClotureComptable.objects.select_related(
+        'cloture_par', 'reouverte_par'
+    ).all()
+    pagination_class = StandardPagination
+    search_fields = ['numero', 'notes']
+    filterset_fields = ['statut', 'type', 'annee', 'mois']
+    ordering_fields = ['-annee', '-mois', 'created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ClotureComptableListSerializer
+        return ClotureComptableSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy',
+                           'calculer', 'valider', 'reouvrir']:
+            return [CanEditComptabilite()]
+        return [CanViewComptabilite()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def prochain_numero(self, request):
+        """Retourne le prochain numéro de clôture proposé."""
+        return Response({'numero': ClotureComptable.proposer_numero()})
+
+    @action(detail=True, methods=['post'])
+    def calculer(self, request, pk=None):
+        """Calcule les totaux depuis les écritures."""
+        cloture = self.get_object()
+        if cloture.statut == 'validee':
+            return Response(
+                {"error": "Impossible de recalculer une clôture validée."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cloture.calculer_totaux()
+        cloture.statut = 'en_cours'
+        cloture.save()
+        return Response(ClotureComptableSerializer(cloture).data)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide définitivement une clôture."""
+        cloture = self.get_object()
+        if cloture.statut == 'validee':
+            return Response(
+                {"error": "Cette clôture est déjà validée."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cloture.statut = 'validee'
+        cloture.cloture_par = request.user
+        cloture.date_cloture = timezone.now()
+        cloture.save()
+        return Response(ClotureComptableSerializer(cloture).data)
+
+    @action(detail=True, methods=['post'])
+    def reouvrir(self, request, pk=None):
+        """Réouvre une clôture validée."""
+        cloture = self.get_object()
+        if cloture.statut != 'validee':
+            return Response(
+                {"error": "Seule une clôture validée peut être réouverte."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cloture.statut = 'reouverte'
+        cloture.reouverte_par = request.user
+        cloture.date_reouverture = timezone.now()
+        cloture.save()
+        return Response(ClotureComptableSerializer(cloture).data)
+
+    @action(detail=False, methods=['get'])
+    def statistiques(self, request):
+        """Statistiques des clôtures."""
+        qs = ClotureComptable.objects.all()
+        data = {
+            'total': qs.count(),
+            'brouillon': qs.filter(statut='brouillon').count(),
+            'en_cours': qs.filter(statut='en_cours').count(),
+            'validees': qs.filter(statut='validee').count(),
+            'reouvertes': qs.filter(statut='reouverte').count(),
+        }
+        return Response(data)

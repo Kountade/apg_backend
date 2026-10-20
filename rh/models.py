@@ -206,6 +206,10 @@ class Employe(SoftDeleteModel):
 # CONTRATS
 # ============================================================
 
+# ============================================================
+# CONTRATS
+# ============================================================
+
 class Contrat(BaseModel):
     """Contrats de travail des employés."""
 
@@ -223,10 +227,22 @@ class Contrat(BaseModel):
         related_name='contrats',
         verbose_name="Employé",
     )
+
+    # ✅ NOUVEAU : lien vers le référentiel des types de contrats (catégorie 'emploi')
+    type_contrat = models.ForeignKey(
+        'clients.TypeContrat',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='contrats_employes',
+        verbose_name="Type de contrat (référentiel)",
+        help_text="Modèle de contrat utilisé (pré-remplit le contenu)"
+    )
+
+    # ⚠️ On garde le champ texte 'type' pour compatibilité ascendante
     type = models.CharField(
         max_length=30,
         choices=Employe.TYPE_CONTRAT_CHOICES,
-        verbose_name="Type",
+        verbose_name="Type (court)",
     )
     date_debut = models.DateField(verbose_name="Date de début")
     date_fin = models.DateField(
@@ -260,7 +276,6 @@ class Contrat(BaseModel):
     def est_expire(self):
         from datetime import date
         return self.date_fin and self.date_fin < date.today()
-
 
 # ============================================================
 # PRÉSENCES

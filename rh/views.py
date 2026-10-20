@@ -161,13 +161,25 @@ class EmployeViewset(viewsets.ModelViewSet):
 # CONTRATS
 # ============================================================
 
+# ============================================================
+# CONTRATS
+# ============================================================
+
 class ContratViewset(viewsets.ModelViewSet):
-    """CRUD Contrats."""
-    queryset = Contrat.objects.select_related('employe').all()
+    """CRUD Contrats (employés)."""
+    queryset = Contrat.objects.select_related(
+        'employe', 'type_contrat'
+    ).all()
     serializer_class = ContratSerializer
     pagination_class = StandardPagination
-    search_fields = ['numero', 'employe__nom', 'employe__prenom']
-    filterset_fields = ['statut', 'type', 'employe']
+    search_fields = [
+        'numero',
+        'employe__nom',
+        'employe__prenom',
+        'type_contrat__titre',  # ✅ NOUVEAU
+    ]
+    filterset_fields = ['statut', 'type',
+                        'employe', 'type_contrat']  # ✅ ajouté
     ordering_fields = ['date_debut', 'date_fin', 'salaire']
 
     def get_permissions(self):
@@ -187,14 +199,35 @@ class ContratViewset(viewsets.ModelViewSet):
             statut='actif',
             date_fin__lte=seuil,
             date_fin__gte=date.today()
-        ).select_related('employe')
+        ).select_related('employe', 'type_contrat')
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    # ✅ NOUVEAU : contrats groupés par type de contrat
+    @action(detail=False, methods=['get'])
+    def par_type(self, request):
+        """Contrats groupés par type de contrat (référentiel)."""
+        qs = Contrat.objects.select_related('employe', 'type_contrat').all()
+        types = {}
+        for c in qs:
+            key = c.type_contrat_id or 'sans_type'
+            if key not in types:
+                types[key] = {
+                    'type_contrat': c.type_contrat_id,
+                    'type_contrat_titre': (
+                        c.type_contrat.titre if c.type_contrat else 'Sans type'
+                    ),
+                    'contrats': [],
+                }
+            types[key]['contrats'].append(
+                ContratSerializer(c).data
+            )
+        return Response(list(types.values()))
 
 # ============================================================
 # PRÉSENCES
 # ============================================================
+
 
 class PresenceViewset(viewsets.ModelViewSet):
     """CRUD Présences."""
@@ -330,7 +363,8 @@ class CongeViewset(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def en_attente(self, request):
         """Congés en attente de validation."""
-        qs = Conge.objects.filter(statut='en_attente').select_related('employe')
+        qs = Conge.objects.filter(
+            statut='en_attente').select_related('employe')
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
