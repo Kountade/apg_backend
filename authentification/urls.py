@@ -13,7 +13,7 @@ urlpatterns = [
     path('', include('comptabilite.urls')),
     path('', include('tresorerie.urls')),
     path('', include('paie.urls')),
-
+    path('', include('stocks.urls')),
 
 
 

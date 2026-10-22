@@ -56,7 +56,10 @@ INSTALLED_APPS = [
     "clients",
     "comptabilite",
     "tresorerie",
-    "paie"
+    "paie",
+    "exploitation",
+    "stocks",
+    "achats"
 
 
 
