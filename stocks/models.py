@@ -768,6 +768,40 @@ class MouvementStock(BaseModel, NumeroAutoMixin):
         if is_new:
             self._appliquer_mouvement()
 
+    # ✅ NOUVEAU : proposer_numero() — aligné sur NumeroAutoMixin.generate_numero()
+    @classmethod
+    def proposer_numero(cls):
+        """
+        Retourne le prochain numéro SANS l'enregistrer ni incrémenter le compteur.
+        Utilise la même configuration (config.models.Numerotation) que generate_numero().
+        """
+        from django.utils import timezone
+        from config.models import Numerotation
+
+        year = timezone.now().year
+        num_config = Numerotation.objects.filter(
+            type_document=cls.PREFIX,
+            annee=year,
+        ).first()
+
+        if not num_config:
+            # Aucun compteur n'existe encore → prochain numéro = 1
+            prefixe = cls.PREFIX
+            dernier = 0
+        else:
+            prefixe = num_config.prefixe or cls.PREFIX
+            dernier = num_config.dernier_numero or 0
+
+        prochain = dernier + 1
+        try:
+            return num_config.format.format(
+                prefix=prefixe,
+                year=year,
+                num=prochain,
+            ) if num_config else f"{prefixe}-{year}-{prochain:06d}"
+        except (KeyError, IndexError, AttributeError):
+            return f"{prefixe}-{year}-{prochain:06d}"
+
     def _appliquer_mouvement(self):
         """Met à jour les stocks par magasin."""
         if self.type == 'entree' and self.magasin_destination:
