@@ -59,8 +59,8 @@ INSTALLED_APPS = [
     "paie",
     "exploitation",
     "stocks",
-    "achats"
-
+    "achats",
+    "vehicules"
 
 
 
