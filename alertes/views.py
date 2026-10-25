@@ -6,11 +6,13 @@ Toutes les alertes sont calculées à la volée en interrogeant les autres modul
 Aucune donnée n'est stockée en base (sauf ConfigAlerte et CanalNotification qui
 sont des placeholders).
 
-Le pattern _safe_get() garantit que :
-- si un endpoint n'existe pas → on ignore silencieusement
-- si la réponse est {results: []} ou [] → on normalise
-- si la réponse est {count: N} → on génère N alertes génériques
+✅ Compatible production Render / derrière proxy :
+   - utilise request.get_host() au lieu de build_absolute_uri()
+   - respecte X-Forwarded-Proto (HTTPS terminé par le proxy)
+   - timeout 5s par appel
+   - logs structurés pour diagnostic
 """
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -23,30 +25,56 @@ from .models import ConfigAlerte, CanalNotification
 from .serializers import ConfigAlerteSerializer, CanalNotificationSerializer
 
 
+logger = logging.getLogger(__name__)
+
+
 # ============================================================
 # HELPERS D'AGRÉGATION
 # ============================================================
+
+def _get_base_url(request):
+    """
+    Construit l'URL de base du backend en respectant le proxy Render.
+
+    ✅ Correction production :
+    - Render termine le HTTPS puis transmet en HTTP au conteneur
+    - request.get_host() retourne le vrai domaine public
+    - HTTP_X_FORWARDED_PROTO = 'https' quand derrière le proxy
+    """
+    host = request.get_host()
+    scheme = 'https' if (
+        request.is_secure() or
+        request.META.get('HTTP_X_FORWARDED_PROTO') == 'https'
+    ) else 'http'
+    return f"{scheme}://{host}"
+
 
 def _safe_get(request, url):
     """
     Appelle un endpoint en absorbant les erreurs.
     Retourne une liste normalisée (toujours un tableau).
+
+    ✅ Corrigé pour production : utilise _get_base_url() au lieu de
+    request.build_absolute_uri() qui casse derrière un proxy.
     """
     import requests
-    from django.conf import settings
 
     try:
-        base = request.build_absolute_uri('/').rstrip('/')
+        base = _get_base_url(request)
         full_url = f"{base}{url}"
+
         headers = {}
         if request.auth:
             headers['Authorization'] = f"Token {request.auth}"
-        # Ou si auth est un Token object
-        elif hasattr(request, 'user') and request.user.is_authenticated:
-            headers['Authorization'] = f"Token {request.user.auth_token.key}" if hasattr(request.user, 'auth_token') else ''
 
-        resp = requests.get(full_url, headers=headers, timeout=3)
+        logger.debug(f"[alertes] GET {full_url}")
+
+        resp = requests.get(full_url, headers=headers, timeout=5)
+
         if resp.status_code != 200:
+            logger.warning(
+                f"[alertes] {full_url} → HTTP {resp.status_code}"
+            )
             return []
 
         data = resp.json()
@@ -58,19 +86,16 @@ def _safe_get(request, url):
             if 'count' in data and data['count'] > 0:
                 return [{'id': i} for i in range(data['count'])]
         return []
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[alertes] Erreur {url}: {type(e).__name__}: {e}")
         return []
 
 
 def _normaliser_alerte(item, type_alerte, module, gravite='warning', url_detail=None):
-    """
-    Transforme n'importe quel objet en alerte normalisée.
-    Utilise getattr/defensive pour absorber les variations de format.
-    """
+    """Transforme n'importe quel objet en alerte normalisée."""
     if not isinstance(item, dict):
         item = {}
 
-    # Titre : on cherche dans plusieurs champs possibles
     titre = (
         item.get('titre') or
         item.get('nom') or
@@ -82,7 +107,6 @@ def _normaliser_alerte(item, type_alerte, module, gravite='warning', url_detail=
         f"{module} #{item.get('id', '?')}"
     )
 
-    # Description
     description = (
         item.get('description') or
         item.get('observation') or
@@ -92,7 +116,6 @@ def _normaliser_alerte(item, type_alerte, module, gravite='warning', url_detail=
         ''
     )
 
-    # Date
     date_val = (
         item.get('created_at') or
         item.get('date_creation') or
@@ -105,8 +128,8 @@ def _normaliser_alerte(item, type_alerte, module, gravite='warning', url_detail=
         None
     )
 
-    # ID unique
-    id_alerte = item.get('id') or item.get('numero') or item.get('reference') or '?'
+    id_alerte = item.get('id') or item.get(
+        'numero') or item.get('reference') or '?'
     unique_id = f"{module}-{type_alerte}-{id_alerte}"
 
     return {
@@ -118,15 +141,12 @@ def _normaliser_alerte(item, type_alerte, module, gravite='warning', url_detail=
         'date': date_val,
         'gravite': gravite,
         'url': url_detail or '#',
-        'data': item,  # objet brut pour debug/référence
+        'data': item,
     }
 
 
 def _fetch_alertes_module(request, module_name, sources):
-    """
-    sources = liste de tuples (url, type_alerte, gravite, url_detail_prefix)
-    Retourne une liste d'alertes normalisées.
-    """
+    """sources = liste de tuples (url, type_alerte, gravite, url_detail_prefix)"""
     alertes = []
     for url, type_alerte, gravite, url_prefix in sources:
         items = _safe_get(request, url)
@@ -134,13 +154,17 @@ def _fetch_alertes_module(request, module_name, sources):
             item_id = item.get('id') if isinstance(item, dict) else None
             url_detail = f"{url_prefix}{item_id}/" if item_id else '#'
             alertes.append(
-                _normaliser_alerte(item, type_alerte, module_name, gravite, url_detail)
+                _normaliser_alerte(item, type_alerte,
+                                   module_name, gravite, url_detail)
             )
     return alertes
 
 
+# ============================================================
+# AGRÉGATEURS PAR MODULE
+# ============================================================
+
 def _fetch_alertes_rh(request):
-    """Agrège les alertes RH."""
     sources = [
         ('/conges/en-attente/', 'conge_en_attente', 'warning', '/conges/'),
         ('/contrats/expirant/', 'contrat_expirant', 'error', '/contrats/'),
@@ -151,46 +175,51 @@ def _fetch_alertes_rh(request):
 
 
 def _fetch_alertes_paie(request):
-    """Agrège les alertes Paie."""
     sources = [
         ('/paie/en-attente/', 'paie_en_attente', 'warning', '/paie/'),
-        ('/paie-periodes/?statut=en_attente', 'periode_paie', 'info', '/paie-periodes/'),
-        ('/avances-salaire/?statut=en_attente', 'avance_salaire', 'info', '/avances-salaire/'),
+        ('/paie-periodes/?statut=en_attente',
+         'periode_paie', 'info', '/paie-periodes/'),
+        ('/avances-salaire/?statut=en_attente',
+         'avance_salaire', 'info', '/avances-salaire/'),
     ]
     return _fetch_alertes_module(request, 'paie', sources)
 
 
 def _fetch_alertes_achats(request):
-    """Agrège les alertes Achats."""
     sources = [
-        ('/factures-fournisseurs/impayees/', 'facture_impayee', 'error', '/factures-fournisseurs/'),
-        ('/factures-fournisseurs/echues/', 'facture_echue', 'critical', '/factures-fournisseurs/'),
-        ('/demandes-achat/en_attente/', 'demande_achat_en_attente', 'warning', '/demandes-achat/'),
+        ('/factures-fournisseurs/impayees/', 'facture_impayee',
+         'error', '/factures-fournisseurs/'),
+        ('/factures-fournisseurs/echues/', 'facture_echue',
+         'critical', '/factures-fournisseurs/'),
+        ('/demandes-achat/en_attente/', 'demande_achat_en_attente',
+         'warning', '/demandes-achat/'),
         ('/validations/en-attente/', 'validation_en_attente', 'info', '/validations/'),
         ('/depenses/en-attente/', 'depense_en_attente', 'info', '/decaissements/'),
-        ('/bons-commande/?statut=brouillon', 'bon_commande_brouillon', 'info', '/bons-commande/'),
+        ('/bons-commande/?statut=brouillon',
+         'bon_commande_brouillon', 'info', '/bons-commande/'),
     ]
     return _fetch_alertes_module(request, 'achats', sources)
 
 
 def _fetch_alertes_stocks(request):
-    """Agrège les alertes Stocks."""
     sources = [
         ('/articles/stock_critique/', 'stock_critique', 'critical', '/articles/'),
         ('/articles/en_alerte/', 'stock_alerte', 'warning', '/articles/'),
-        ('/inventaires/?statut=en_cours', 'inventaire_en_cours', 'info', '/inventaire/'),
-        ('/maintenances/?statut=planifiee', 'maintenance_planifiee', 'info', '/maintenances/'),
+        ('/inventaires/?statut=en_cours',
+         'inventaire_en_cours', 'info', '/inventaire/'),
+        ('/maintenances/?statut=planifiee',
+         'maintenance_planifiee', 'info', '/maintenances/'),
     ]
     return _fetch_alertes_module(request, 'stocks', sources)
 
 
 def _fetch_alertes_vehicules(request):
-    """Agrège les alertes Véhicules."""
     sources = [
         ('/assurances/qui_expirent/', 'assurance_expirant', 'warning', '/assurances/'),
         ('/assurances/expirees/', 'assurance_expiree', 'error', '/assurances/'),
         ('/conducteurs/permis_expires/', 'permis_expire', 'error', '/conducteurs/'),
-        ('/documents-vehicules/qui_expirent/', 'document_vehicule_expirant', 'warning', '/documents-vehicules/'),
+        ('/documents-vehicules/qui_expirent/',
+         'document_vehicule_expirant', 'warning', '/documents-vehicules/'),
         ('/pleins-carburant/alertes/', 'consommation_alerte', 'warning', '/carburant/'),
         ('/vehicules/maintenance/', 'vehicule_en_maintenance', 'info', '/tricycles/'),
     ]
@@ -198,7 +227,6 @@ def _fetch_alertes_vehicules(request):
 
 
 def _fetch_alertes_documents(request):
-    """Agrège les alertes Documents."""
     sources = [
         ('/documents/expirent/', 'document_expirant', 'warning', '/documents/'),
         ('/documents/expires/', 'document_expire', 'error', '/documents/'),
@@ -207,17 +235,16 @@ def _fetch_alertes_documents(request):
 
 
 def _fetch_alertes_exploitation(request):
-    """Agrège les alertes Exploitation."""
     sources = [
         ('/missions/en-cours/', 'mission_en_cours', 'info', '/missions/'),
         ('/incidents/ouverts/', 'incident_ouvert', 'error', '/incidents/'),
-        ('/incidents/?gravite=critique&statut=ouvert', 'incident_critique', 'critical', '/incidents/'),
+        ('/incidents/?gravite=critique&statut=ouvert',
+         'incident_critique', 'critical', '/incidents/'),
     ]
     return _fetch_alertes_module(request, 'exploitation', sources)
 
 
 def _toutes_alertes(request):
-    """Récupère TOUTES les alertes de tous les modules."""
     return (
         _fetch_alertes_rh(request) +
         _fetch_alertes_paie(request) +
@@ -246,7 +273,6 @@ class AlertesViewset(viewsets.ViewSet):
     def toutes(self, request):
         """Toutes les alertes de tous les modules."""
         alertes = _toutes_alertes(request)
-        # Trier par gravité (critical > error > warning > info) puis par date
         ordre_gravite = {'critical': 0, 'error': 1, 'warning': 2, 'info': 3}
         alertes.sort(key=lambda a: (
             ordre_gravite.get(a['gravite'], 9),
@@ -261,82 +287,154 @@ class AlertesViewset(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def rh(self, request):
-        """Alertes RH."""
         alertes = _fetch_alertes_rh(request)
-        return Response({
-            'module': 'rh',
-            'total': len(alertes),
-            'alertes': alertes,
-        })
+        return Response({'module': 'rh', 'total': len(alertes), 'alertes': alertes})
 
     @action(detail=False, methods=['get'])
     def paie(self, request):
-        """Alertes Paie."""
         alertes = _fetch_alertes_paie(request)
-        return Response({
-            'module': 'paie',
-            'total': len(alertes),
-            'alertes': alertes,
-        })
+        return Response({'module': 'paie', 'total': len(alertes), 'alertes': alertes})
 
     @action(detail=False, methods=['get'])
     def finance(self, request):
-        """Alertes Finance (Achats + Paie + Trésorerie)."""
         alertes = _fetch_alertes_achats(request) + _fetch_alertes_paie(request)
-        return Response({
-            'module': 'finance',
-            'total': len(alertes),
-            'alertes': alertes,
-        })
+        return Response({'module': 'finance', 'total': len(alertes), 'alertes': alertes})
 
     @action(detail=False, methods=['get'])
     def logistique(self, request):
-        """Alertes Logistique (Stocks + Carburant)."""
         alertes = _fetch_alertes_stocks(request)
-        return Response({
-            'module': 'logistique',
-            'total': len(alertes),
-            'alertes': alertes,
-        })
+        return Response({'module': 'logistique', 'total': len(alertes), 'alertes': alertes})
 
     @action(detail=False, methods=['get'])
     def vehicules(self, request):
-        """Alertes Véhicules."""
         alertes = _fetch_alertes_vehicules(request)
-        return Response({
-            'module': 'vehicules',
-            'total': len(alertes),
-            'alertes': alertes,
-        })
+        return Response({'module': 'vehicules', 'total': len(alertes), 'alertes': alertes})
 
     @action(detail=False, methods=['get'])
     def exploitation(self, request):
-        """Alertes Exploitation."""
         alertes = _fetch_alertes_exploitation(request)
-        return Response({
-            'module': 'exploitation',
-            'total': len(alertes),
-            'alertes': alertes,
-        })
+        return Response({'module': 'exploitation', 'total': len(alertes), 'alertes': alertes})
 
     @action(detail=False, methods=['get'])
     def documents(self, request):
-        """Alertes Documents."""
         alertes = _fetch_alertes_documents(request)
-        return Response({
-            'module': 'documents',
-            'total': len(alertes),
-            'alertes': alertes,
-        })
+        return Response({'module': 'documents', 'total': len(alertes), 'alertes': alertes})
 
     @action(detail=False, methods=['get'])
     def statistiques(self, request):
-        """Statistiques globales (sans le détail)."""
         alertes = _toutes_alertes(request)
         return Response({
             'total': len(alertes),
             'par_module': self._compter_par_module(alertes),
             'par_gravite': self._compter_par_gravite(alertes),
+        })
+
+    # ============================================================
+    # ✅ NOUVEAU — Endpoint de debug
+    # ============================================================
+
+    @action(detail=False, methods=['get'])
+    def debug(self, request):
+        """
+        Diagnostic de connectivité des endpoints agrégés.
+
+        Retourne pour chaque endpoint :
+        - l'URL testée
+        - le statut HTTP
+        - le nombre d'items
+        - l'erreur éventuelle
+
+        ⚠️ À utiliser uniquement pour le diagnostic.
+        """
+        import requests
+
+        base = _get_base_url(request)
+        headers = {}
+        if request.auth:
+            headers['Authorization'] = f"Token {request.auth}"
+
+        endpoints_a_tester = [
+            # RH
+            '/conges/en-attente/',
+            '/contrats/expirant/',
+            '/presences/en-attente/',
+            '/absences/non-justifiees/',
+            # Paie
+            '/paie/en-attente/',
+            '/paie-periodes/?statut=en_attente',
+            '/avances-salaire/?statut=en_attente',
+            # Achats
+            '/factures-fournisseurs/impayees/',
+            '/factures-fournisseurs/echues/',
+            '/demandes-achat/en_attente/',
+            '/validations/en-attente/',
+            '/depenses/en-attente/',
+            '/bons-commande/?statut=brouillon',
+            # Stocks
+            '/articles/stock_critique/',
+            '/articles/en_alerte/',
+            '/inventaires/?statut=en_cours',
+            '/maintenances/?statut=planifiee',
+            # Véhicules
+            '/assurances/qui_expirent/',
+            '/assurances/expirees/',
+            '/conducteurs/permis_expires/',
+            '/documents-vehicules/qui_expirent/',
+            '/pleins-carburant/alertes/',
+            '/vehicules/maintenance/',
+            # Documents
+            '/documents/expirent/',
+            '/documents/expires/',
+            # Exploitation
+            '/missions/en-cours/',
+            '/incidents/ouverts/',
+            '/incidents/?gravite=critique&statut=ouvert',
+        ]
+
+        resultats = []
+        for endpoint in endpoints_a_tester:
+            full_url = f"{base}{endpoint}"
+            try:
+                resp = requests.get(full_url, headers=headers, timeout=5)
+                items = []
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                        if isinstance(data, list):
+                            items = data
+                        elif isinstance(data, dict):
+                            items = data.get(
+                                'results', data.get('alertes', []))
+                    except Exception:
+                        pass
+
+                resultats.append({
+                    'endpoint': endpoint,
+                    'full_url': full_url,
+                    'status': resp.status_code,
+                    'count': len(items) if isinstance(items, list) else 0,
+                    'error': None if resp.status_code == 200 else f"HTTP {resp.status_code}",
+                })
+            except Exception as e:
+                resultats.append({
+                    'endpoint': endpoint,
+                    'full_url': full_url,
+                    'status': None,
+                    'count': 0,
+                    'error': f"{type(e).__name__}: {str(e)}",
+                })
+
+        # Résumé
+        ok = sum(1 for r in resultats if r['status'] == 200)
+        ko = len(resultats) - ok
+
+        return Response({
+            'base_url': base,
+            'auth': bool(request.auth),
+            'total_endpoints': len(resultats),
+            'ok': ok,
+            'ko': ko,
+            'details': resultats,
         })
 
     # ============================================================
