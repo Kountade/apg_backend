@@ -17,9 +17,8 @@ urlpatterns = [
     path('', include('achats.urls')),
     path('', include('exploitation.urls')),
     path('', include('vehicules.urls')),
-
-
-
+    path('', include('documents.urls')),
+    path('', include('alertes.urls')),
 
 
 

@@ -60,7 +60,10 @@ INSTALLED_APPS = [
     "exploitation",
     "stocks",
     "achats",
-    "vehicules"
+    "vehicules",
+    "documents",
+    "alertes",
+
 
 
 
