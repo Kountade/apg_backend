@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     "vehicules",
     "documents",
     "alertes",
+    "dashboard",
 
 
 

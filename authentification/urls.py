@@ -19,6 +19,7 @@ urlpatterns = [
     path('', include('vehicules.urls')),
     path('', include('documents.urls')),
     path('', include('alertes.urls')),
+    path('', include('dashboard.urls')),
 
 
 
